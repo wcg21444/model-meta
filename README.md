@@ -37,3 +37,12 @@
 
         }
     ]// skeletal文件生成,用于生成物体节点层级架构
+
+## 使用方式
+
+python gltf_meta_generator.py <模型.gltf|glb>
+
+- 输出：同级目录下 <模型名>.modelmeta.json
+
+- 或指定输出路径
+  - python gltf_meta_generator.py model.glb -o output.json
