@@ -6,6 +6,8 @@ Parses GLTF files and generates `.modelmeta.json` containing:
 - overall bounding box
 - per-part geometry and PBR material info
 - skeleton node hierarchy (for skeletal models)
+
+Output format is driven by schema/modelmeta.schema.json — no hard-coded field names.
 """
 
 import sys
@@ -20,6 +22,15 @@ from urllib.parse import unquote
 
 import trimesh
 import pygltflib
+
+from schema_loader import Schema, SchemaBuilder
+
+
+# ---------------------------------------------------------------------------
+# Schema loading (module-level so it fails early if schema is broken)
+# ---------------------------------------------------------------------------
+_SCHEMA_PATH = Path(__file__).with_suffix("").parent / "schema" / "modelmeta.schema.json"
+_DEFAULT_SCHEMA = Schema.load(_SCHEMA_PATH)
 
 
 def load_gltf(filepath: Path) -> Tuple[pygltflib.GLTF2, Optional[trimesh.Scene]]:
@@ -36,6 +47,9 @@ def load_gltf(filepath: Path) -> Tuple[pygltflib.GLTF2, Optional[trimesh.Scene]]
     return gltf, scene
 
 
+# ---------------------------------------------------------------------------
+# Bounding-box helpers
+# ---------------------------------------------------------------------------
 def get_overall_bounding_box(scene: Optional[trimesh.Scene]) -> Optional[Dict[str, List[float]]]:
     """Compute overall bounding box from a trimesh scene."""
     if scene is None:
@@ -119,6 +133,9 @@ def compute_overall_bbox_from_parts(parts: List[Dict[str, Any]]) -> Dict[str, Li
     }
 
 
+# ---------------------------------------------------------------------------
+# Texture helpers
+# ---------------------------------------------------------------------------
 def resolve_texture_path(gltf: pygltflib.GLTF2, texture_index: Optional[int], unpacked_images: Optional[Dict[int, str]] = None) -> Optional[str]:
     """Map a texture index to its image URI (relative path)."""
     if texture_index is None or texture_index < 0 or texture_index >= len(gltf.textures):
@@ -238,57 +255,58 @@ def extract_embedded_textures(gltf: pygltflib.GLTF2, output_dir: Path, prefix: s
     return mapping
 
 
-def extract_material(gltf: pygltflib.GLTF2, material_index: Optional[int], unpacked_images: Optional[Dict[int, str]] = None) -> Dict[str, Any]:
-    """Build a material descriptor from a GLTF material index."""
-    default = {
-        "is_pbr": False,
-        "textures": {
-            "base_color": None,
-            "metallic": None,
-            "roughness": None,
-            "normal": None,
-        },
-        "alpha_mode": "OPAQUE",
-        "roughness": 0.8,
-        "metallic": 0.0,
-    }
+# ---------------------------------------------------------------------------
+# Schema-driven extractors — field names come from schema/modelmeta.schema.json
+# ---------------------------------------------------------------------------
+def extract_material(gltf: pygltflib.GLTF2, schema: Schema, material_index: Optional[int], unpacked_images: Optional[Dict[int, str]] = None) -> Dict[str, Any]:
+    """Build a Material object according to the Schema."""
+    tex = SchemaBuilder(schema, "TextureSlots")
+    tex.set("base_color", None)
+    tex.set("metallic", None)
+    tex.set("roughness", None)
+    tex.set("normal", None)
+
+    builder = SchemaBuilder(schema, "Material")
+    builder.set("is_pbr", False)
+    builder.set("textures", tex.build())
+    builder.set("alpha_mode", "OPAQUE")
+    builder.set("roughness", 0.8)
+    builder.set("metallic", 0.0)
 
     if material_index is None or material_index < 0 or material_index >= len(gltf.materials):
-        return default
+        return builder.build()
 
     mat = gltf.materials[material_index]
-    result = dict(default)
-    result["is_pbr"] = True  # GLTF 2.0 core materials are PBR-based
+    builder.set("is_pbr", True)
     alpha = mat.alphaMode if mat.alphaMode is not None else "OPAQUE"
-    # Map GLTF spec values to the output schema
     alpha_map = {"OPAQUE": "OPAQUE", "MASK": "CUTOUT", "BLEND": "TRANSPARENT"}
-    result["alpha_mode"] = alpha_map.get(alpha, alpha)
+    builder.set("alpha_mode", alpha_map.get(alpha, alpha))
 
     pbr = mat.pbrMetallicRoughness
     if pbr is not None:
-        result["metallic"] = float(pbr.metallicFactor) if pbr.metallicFactor is not None else 0.0
-        result["roughness"] = float(pbr.roughnessFactor) if pbr.roughnessFactor is not None else 0.8
+        builder.set("metallic", float(pbr.metallicFactor) if pbr.metallicFactor is not None else 0.0)
+        builder.set("roughness", float(pbr.roughnessFactor) if pbr.roughnessFactor is not None else 0.8)
 
         if pbr.baseColorTexture is not None:
-            result["textures"]["base_color"] = resolve_texture_path(gltf, pbr.baseColorTexture.index, unpacked_images)
+            tex.set("base_color", resolve_texture_path(gltf, pbr.baseColorTexture.index, unpacked_images))
 
-        # GLTF stores metallic & roughness in a single combined texture
         if pbr.metallicRoughnessTexture is not None:
             tex_path = resolve_texture_path(gltf, pbr.metallicRoughnessTexture.index, unpacked_images)
-            result["textures"]["metallic"] = tex_path
-            result["textures"]["roughness"] = tex_path
+            tex.set("metallic", tex_path)
+            tex.set("roughness", tex_path)
     else:
-        result["metallic"] = 0.0
-        result["roughness"] = 0.8
+        builder.set("metallic", 0.0)
+        builder.set("roughness", 0.8)
 
     if mat.normalTexture is not None:
-        result["textures"]["normal"] = resolve_texture_path(gltf, mat.normalTexture.index, unpacked_images)
+        tex.set("normal", resolve_texture_path(gltf, mat.normalTexture.index, unpacked_images))
 
-    return result
+    builder.set("textures", tex.build())
+    return builder.build()
 
 
-def extract_model_parts(gltf: pygltflib.GLTF2, unpacked_images: Optional[Dict[int, str]] = None) -> List[Dict[str, Any]]:
-    """Extract one model_part per GLTF mesh."""
+def extract_model_parts(gltf: pygltflib.GLTF2, schema: Schema, unpacked_images: Optional[Dict[int, str]] = None) -> List[Dict[str, Any]]:
+    """Extract ModelPart objects according to the Schema."""
     parts = []
     for mesh_idx, mesh in enumerate(gltf.meshes):
         mesh_name = mesh.name if mesh.name else f"mesh_{mesh_idx}"
@@ -298,23 +316,22 @@ def extract_model_parts(gltf: pygltflib.GLTF2, unpacked_images: Optional[Dict[in
         material = None
         for prim in mesh.primitives:
             if prim.material is not None:
-                material = extract_material(gltf, prim.material, unpacked_images)
+                material = extract_material(gltf, schema, prim.material, unpacked_images)
                 break
         if material is None:
-            material = {
-                "is_pbr": False,
-                "textures": {"base_color": None, "metallic": None, "roughness": None, "normal": None},
-                "alpha_mode": "OPAQUE",
-                "roughness": 0.8,
-                "metallic": 0.0,
-            }
+            material = extract_material(gltf, schema, None, unpacked_images)
 
-        parts.append({"name": mesh_name, "bounding_box": bbox, "material": material})
+        part = SchemaBuilder(schema, "ModelPart")
+        part.set("name", mesh_name)
+        if bbox is not None:
+            part.set("bounding_box", bbox)
+        part.set("material", material)
+        parts.append(part.build())
     return parts
 
 
-def extract_skeleton(gltf: pygltflib.GLTF2, model_parts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Build skeleton entries mapping each joint node to the model parts it influences."""
+def extract_skeleton(gltf: pygltflib.GLTF2, schema: Schema, model_parts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Build SkeletonNode objects according to the Schema."""
     if not gltf.skins:
         return []
 
@@ -337,12 +354,18 @@ def extract_skeleton(gltf: pygltflib.GLTF2, model_parts: List[Dict[str, Any]]) -
         node = gltf.nodes[joint_idx]
         node_name = node.name if node.name else f"joint_{joint_idx}"
         part_names = [mesh_index_to_name[m] for m in affected if m in mesh_index_to_name]
-        skeleton.append({"node_name": node_name, "model_part": part_names})
+
+        builder = SchemaBuilder(schema, "SkeletonNode")
+        builder.set("node_name", node_name)
+        builder.set("model_part", part_names)
+        skeleton.append(builder.build())
 
     return skeleton
 
 
-def generate_meta(input_path: Path, unpacked_images: Optional[Dict[int, str]] = None) -> Dict[str, Any]:
+def generate_meta(input_path: Path, schema: Optional[Schema] = None, unpacked_images: Optional[Dict[int, str]] = None) -> Dict[str, Any]:
+    if schema is None:
+        schema = _DEFAULT_SCHEMA
     """Generate the complete metadata dictionary for a GLTF/GLB file."""
     input_path = input_path.resolve()
     if not input_path.exists():
@@ -351,7 +374,7 @@ def generate_meta(input_path: Path, unpacked_images: Optional[Dict[int, str]] = 
     gltf, scene = load_gltf(input_path)
 
     model_type = "skeletal" if gltf.skins and len(gltf.skins) > 0 else "static"
-    model_parts = extract_model_parts(gltf, unpacked_images)
+    model_parts = extract_model_parts(gltf, schema, unpacked_images)
 
     # Prefer part-based overall bounds (reliable via accessor min/max);
     # use trimesh only as a fallback.
@@ -361,16 +384,19 @@ def generate_meta(input_path: Path, unpacked_images: Optional[Dict[int, str]] = 
     if bbox is None or _is_invalid_bbox(bbox):
         bbox = {"min": [0.0, 0.0, 0.0], "max": [0.0, 0.0, 0.0]}
 
-    skeleton = extract_skeleton(gltf, model_parts)
+    skeleton = extract_skeleton(gltf, schema, model_parts)
 
-    return {
-        "model_type": model_type,
-        "bounding_box": bbox,
-        "model_part": model_parts,
-        "skeleton": skeleton,
-    }
+    root = SchemaBuilder(schema, "ModelMeta")
+    root.set("model_type", model_type)
+    root.set("bounding_box", bbox)
+    root.set("model_part", model_parts)
+    root.set("skeleton", skeleton)
+    return root.build()
 
 
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
 def _is_glob_pattern(path: str) -> bool:
     """Check if a path string contains glob wildcards."""
     return any(ch in path for ch in "*?[")
@@ -381,7 +407,12 @@ def main():
     parser.add_argument("input", help="Path to .gltf or .glb file (supports glob patterns)")
     parser.add_argument("-o", "--output", help="Output path (default: <input>.modelmeta.json). Must be a directory when input is a glob pattern.")
     parser.add_argument("--unpack", action="store_true", help="Extract embedded textures to files")
+    parser.add_argument("--schema", help="Custom schema JSON path (default: schema/modelmeta.schema.json)")
     args = parser.parse_args()
+
+    # Load schema
+    schema_path = Path(args.schema) if args.schema else _SCHEMA_PATH
+    schema = Schema.load(schema_path)
 
     # Glob mode
     if _is_glob_pattern(args.input):
@@ -408,7 +439,7 @@ def main():
                 texture_dir = in_path.parent / "textures"
                 unpacked_images = extract_embedded_textures(gltf, texture_dir, prefix=in_path.stem)
 
-            result = generate_meta(in_path, unpacked_images)
+            result = generate_meta(in_path, schema, unpacked_images)
             out_path = out_dir / f"{in_path.stem}.modelmeta.json"
             out_path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
             print(f"Metadata written to: {out_path}")
@@ -424,7 +455,7 @@ def main():
         texture_dir = in_path.parent / "textures"
         unpacked_images = extract_embedded_textures(gltf, texture_dir, prefix=in_path.stem)
 
-    result = generate_meta(in_path, unpacked_images)
+    result = generate_meta(in_path, schema, unpacked_images)
 
     out_path = Path(args.output) if args.output else in_path.parent / f"{in_path.stem}.modelmeta.json"
     out_path.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
