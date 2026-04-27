@@ -31,8 +31,6 @@ class TestSchemaToCppGeneration(unittest.TestCase):
         self.assertLess(order.index("BoundingBox"), order.index("ModelPart"))
         # TextureSlots before Material
         self.assertLess(order.index("TextureSlots"), order.index("Material"))
-        # Material before ModelPart
-        self.assertLess(order.index("Material"), order.index("ModelPart"))
 
     def test_enum_values_uppercased(self):
         """Enum values are uppercased; lowercase C++ keywords become safe when uppercased."""

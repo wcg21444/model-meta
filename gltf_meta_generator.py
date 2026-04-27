@@ -267,6 +267,7 @@ def extract_material(gltf: pygltflib.GLTF2, schema: Schema, material_index: Opti
     tex.set("normal", None)
 
     builder = SchemaBuilder(schema, "Material")
+    builder.set("name", "default")
     builder.set("is_pbr", False)
     builder.set("textures", tex.build())
     builder.set("alpha_mode", "OPAQUE")
@@ -277,6 +278,8 @@ def extract_material(gltf: pygltflib.GLTF2, schema: Schema, material_index: Opti
         return builder.build()
 
     mat = gltf.materials[material_index]
+    mat_name = mat.name if mat.name else f"material_{material_index}"
+    builder.set("name", mat_name)
     builder.set("is_pbr", True)
     alpha = mat.alphaMode if mat.alphaMode is not None else "OPAQUE"
     alpha_map = {"OPAQUE": "OPAQUE", "MASK": "CUTOUT", "BLEND": "TRANSPARENT"}
@@ -386,9 +389,39 @@ def generate_meta(input_path: Path, schema: Optional[Schema] = None, unpacked_im
 
     skeleton = extract_skeleton(gltf, schema, model_parts)
 
+    # Flatten materials: collect unique materials and replace model_part.material with name
+    name_to_material: Dict[str, Dict[str, Any]] = {}
+    for part in model_parts:
+        material = part.get("material")
+        if material is None:
+            continue
+        name = material.get("name", "default")
+        name_to_material[name] = material
+        part["material"] = name
+
+    materials = [name_to_material[name] for name in sorted(name_to_material.keys())]
+
+    # Collect unique texture paths from all materials
+    unique_paths: set = set()
+    for material in materials:
+        tex_slots = material.get("textures")
+        if tex_slots is None:
+            continue
+        for slot_path in tex_slots.values():
+            if slot_path is not None:
+                unique_paths.add(slot_path)
+
+    textures = []
+    for path in sorted(unique_paths):
+        tex_builder = SchemaBuilder(schema, "Texture")
+        tex_builder.set("path", path)
+        textures.append(tex_builder.build())
+
     root = SchemaBuilder(schema, "ModelMeta")
     root.set("model_type", model_type)
     root.set("bounding_box", bbox)
+    root.set("textures", textures)
+    root.set("materials", materials)
     root.set("model_part", model_parts)
     root.set("skeleton", skeleton)
     return root.build()

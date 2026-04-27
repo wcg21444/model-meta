@@ -1,0 +1,50 @@
+{
+  "model_type": "static",
+  "bounding_box": {
+    "min": [
+      0.0,
+      0.0,
+      0.0
+    ],
+    "max": [
+      1.0,
+      1.0,
+      0.0
+    ]
+  },
+  "textures": [
+    {
+      "path": "textures/base_color.png"
+    }
+  ],
+  "model_part": [
+    {
+      "name": "textured_quad",
+      "bounding_box": {
+        "min": [
+          0.0,
+          0.0,
+          0.0
+        ],
+        "max": [
+          1.0,
+          1.0,
+          0.0
+        ]
+      },
+      "material": {
+        "is_pbr": true,
+        "textures": {
+          "base_color": "textures/base_color.png",
+          "metallic": null,
+          "roughness": null,
+          "normal": null
+        },
+        "alpha_mode": "OPAQUE",
+        "roughness": 0.5,
+        "metallic": 0.0
+      }
+    }
+  ],
+  "skeleton": []
+}

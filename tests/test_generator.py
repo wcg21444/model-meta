@@ -12,6 +12,12 @@ import gltf_meta_generator as gen
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
+def _get_material(result: dict, part_index: int = 0) -> dict:
+    """Look up the full Material dict for a model_part by its material name reference."""
+    name = result["model_part"][part_index]["material"]
+    return next(m for m in result["materials"] if m["name"] == name)
+
+
 class TestStaticModel(unittest.TestCase):
     def setUp(self):
         self.result = gen.generate_meta(FIXTURES / "static_box.gltf")
@@ -36,7 +42,7 @@ class TestStaticModel(unittest.TestCase):
         self.assertEqual(bbox["max"], [0.5, 1.0, 1.5])
 
     def test_material_pbr(self):
-        mat = self.result["model_part"][0]["material"]
+        mat = _get_material(self.result, 0)
         self.assertTrue(mat["is_pbr"])
         self.assertEqual(mat["metallic"], 0.5)
         self.assertEqual(mat["roughness"], 0.3)
@@ -71,14 +77,15 @@ class TestTexturedModel(unittest.TestCase):
         self.result = gen.generate_meta(FIXTURES / "textured_quad.gltf")
 
     def test_texture_paths(self):
-        tex = self.result["model_part"][0]["material"]["textures"]
+        mat = _get_material(self.result, 0)
+        tex = mat["textures"]
         self.assertEqual(tex["base_color"], "textures/base_color.png")
         self.assertIsNone(tex["metallic"])
         self.assertIsNone(tex["roughness"])
         self.assertIsNone(tex["normal"])
 
     def test_material_values(self):
-        mat = self.result["model_part"][0]["material"]
+        mat = _get_material(self.result, 0)
         self.assertEqual(mat["metallic"], 0.0)
         self.assertEqual(mat["roughness"], 0.5)
 
@@ -112,7 +119,8 @@ class TestAlphaModeMapping(unittest.TestCase):
     def test_opaque(self):
         # Default material has no alphaMode set -> OPAQUE
         result = gen.generate_meta(FIXTURES / "static_box.gltf")
-        self.assertEqual(result["model_part"][0]["material"]["alpha_mode"], "OPAQUE")
+        mat = _get_material(result, 0)
+        self.assertEqual(mat["alpha_mode"], "OPAQUE")
 
 
 class TestTexturePathEdgeCases(unittest.TestCase):
@@ -155,7 +163,8 @@ class TestUnpackFeature(unittest.TestCase):
         meta_path = FIXTURES / "embedded_texture.modelmeta.json"
         self.assertTrue(meta_path.exists())
         data = json.loads(meta_path.read_text(encoding="utf-8"))
-        self.assertEqual(data["model_part"][0]["material"]["textures"]["base_color"], "textures/embedded_texture_texture_0.png")
+        mat = _get_material(data, 0)
+        self.assertEqual(mat["textures"]["base_color"], "textures/embedded_texture_texture_0.png")
         self.assertTrue((FIXTURES / "textures" / "embedded_texture_texture_0.png").exists())
 
     def test_unpack_buffer_view(self):
@@ -168,7 +177,8 @@ class TestUnpackFeature(unittest.TestCase):
         meta_path = FIXTURES / "glb_embedded_image.modelmeta.json"
         self.assertTrue(meta_path.exists())
         data = json.loads(meta_path.read_text(encoding="utf-8"))
-        self.assertEqual(data["model_part"][0]["material"]["textures"]["base_color"], "textures/glb_embedded_image_texture_0.png")
+        mat = _get_material(data, 0)
+        self.assertEqual(mat["textures"]["base_color"], "textures/glb_embedded_image_texture_0.png")
         tex_path = FIXTURES / "textures" / "glb_embedded_image_texture_0.png"
         self.assertTrue(tex_path.exists())
         # Verify it's a valid PNG
@@ -176,7 +186,8 @@ class TestUnpackFeature(unittest.TestCase):
 
     def test_no_unpack_returns_null_for_embedded(self):
         result = gen.generate_meta(FIXTURES / "embedded_texture.gltf")
-        self.assertIsNone(result["model_part"][0]["material"]["textures"]["base_color"])
+        mat = _get_material(result, 0)
+        self.assertIsNone(mat["textures"]["base_color"])
 
 
 class TestGlobMode(unittest.TestCase):
