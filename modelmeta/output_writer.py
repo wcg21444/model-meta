@@ -11,26 +11,63 @@ from typing import Any
 MODEL_EXTENSIONS = {".gltf", ".glb"}
 
 
-def iter_input_files(input_pattern: str) -> tuple[list[Path], bool]:
-    is_glob = any(token in input_pattern for token in "*?[")
-    if is_glob:
-        files = sorted(Path(path) for path in glob.glob(input_pattern, recursive=True))
-        files = [path for path in files if path.suffix.lower() in MODEL_EXTENSIONS]
-        if not files:
-            raise FileNotFoundError(f"glob matched no model files: {input_pattern}")
-        return files, True
+def iter_input_files(patterns: list[str]) -> tuple[list[Path], bool]:
+    """Collect model files matching *patterns*.
 
-    path = Path(input_pattern)
-    if not path.exists():
-        raise FileNotFoundError(f"input model does not exist: {path}")
-    if path.suffix.lower() not in MODEL_EXTENSIONS:
-        raise ValueError(f"unsupported model extension: {path.suffix}")
-    return [path], False
+    Each element of *patterns* may be a concrete file path, a glob
+    pattern, or a semicolon‑delimited CMake list (e.g.
+    ``/a/b.glb;/c/**/*.gltf``).  Semdiamonds in a single string are
+    split automatically so that both ``--glob-patterns a b`` (Python
+    shell) and ``--glob-patterns "a;b"`` (CMake) work.
+
+    Returns ``(files, is_multi)`` where *is_multi* is ``True`` when
+    more than one input file was resolved (so downstream logic knows
+    whether ``output_path`` should be treated as a directory).
+    """
+
+    def _expand_one(raw: str) -> list[Path]:
+        """Split a single raw item (possibly with semicolons), then glob."""
+        collected: list[Path] = []
+        for candidate in raw.split(";"):
+            candidate = candidate.strip()
+            if not candidate:
+                continue
+            is_glob = any(token in candidate for token in "*?[")
+            if is_glob:
+                matched = sorted(Path(p) for p in glob.glob(candidate, recursive=True))
+                matched = [p for p in matched if p.suffix.lower() in MODEL_EXTENSIONS]
+                collected.extend(matched)
+            else:
+                p = Path(candidate)
+                if p.suffix.lower() not in MODEL_EXTENSIONS:
+                    raise ValueError(f"unsupported model extension: {p.suffix} ({candidate})")
+                if not p.exists():
+                    raise FileNotFoundError(f"input model does not exist: {candidate}")
+                collected.append(p)
+        return collected
+
+    all_files: list[Path] = []
+    for raw in patterns:
+        all_files.extend(_expand_one(raw))
+
+    # Deduplicate while preserving order
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    for f in all_files:
+        if f not in seen:
+            seen.add(f)
+            unique.append(f)
+
+    if not unique:
+        raise FileNotFoundError(f"no model files found for patterns: {patterns}")
+
+    is_multi = len(unique) > 1
+    return unique, is_multi
 
 
-def resolve_output_path(model_path: Path, output_arg: Path | None, is_glob: bool) -> Path:
+def resolve_output_path(model_path: Path, output_arg: Path | None, is_multi: bool) -> Path:
     if output_arg is not None:
-        if is_glob or output_arg.exists() and output_arg.is_dir() or str(output_arg).endswith(("/", "\\")):
+        if is_multi or output_arg.exists() and output_arg.is_dir() or str(output_arg).endswith(("/", "\\")):
             return output_arg / f"{model_path.stem}.modelmeta.json"
         return output_arg
     return model_path.with_name(f"{model_path.stem}.modelmeta.json")

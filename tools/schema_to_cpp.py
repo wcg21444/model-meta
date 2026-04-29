@@ -23,7 +23,7 @@ from tools.cpp_schema import build_structs, load_schema, namespace_close, namesp
 def render_header(config: ModelMetaConfig) -> str:
     root_type = convert_name(config.root_cpp_type, config.type_naming)
     parse_function = convert_name(config.parse_function, config.function_naming)
-    schema = load_schema(config.cpp_schema_path)
+    schema = load_schema(config.schema_path)
     structs = build_structs(schema, root_type)
     lines: list[str] = [
         "#pragma once",

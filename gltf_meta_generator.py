@@ -36,11 +36,11 @@ def generate_for_file(model_path: Path, is_glob: bool, config: ModelMetaConfig) 
 def main(config: ModelMetaConfig | None = None) -> int:
     if config is None:
         config = DEFAULT_CONFIG
-    if not config.glob_pattern:
-        print("error: glob_pattern is not set in model_meta_configs.py. Set it to a model path or glob pattern.", file=sys.stderr)
+    if not config.glob_patterns:
+        print("error: glob_patterns is empty in configuration. Set it to at least one model path or glob pattern.", file=sys.stderr)
         return 1
     try:
-        files, is_glob = iter_input_files(config.glob_pattern)
+        files, is_glob = iter_input_files(config.glob_patterns)
         outputs = [generate_for_file(path, is_glob, config) for path in files]
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)

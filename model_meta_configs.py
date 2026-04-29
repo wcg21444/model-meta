@@ -5,10 +5,13 @@ Defines parameters for all three scripts:
   - cpp_json_codegen.py      (JSON schema → C++ to_json/from_json)
   - schema_to_cpp.py         (JSON/YAML schema → C++ struct/enum header)
 
-CLI overrides::
+CLI overrides (multiple patterns, space or semicolon separated)::
 
-    python gltf_model_meta.py --glob-pattern "assets/**/*.glb" \\
+    python gltf_model_meta.py --glob-patterns "assets/**/*.glb" "extra/**/*.gltf" \\
         --cpp-header-output include/out.h --cpp-source-output src/out.cpp
+
+    # CMake-friendly semicolon-delimited form:
+    python gltf_model_meta.py --glob-patterns "assets/**/*.glb;extra/**/*.gltf"
 
 Every --option falls back to the value in DEFAULT_CONFIG (or the dataclass
 default) when omitted on the command line.
@@ -22,7 +25,7 @@ CMake integration (recommended pattern)::
     add_custom_command(
         OUTPUT  ${MODELMETA_HEADER} ${MODELMETA_SOURCE}
         COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/gltf_model_meta.py"
-                --glob-pattern       "${MODELMETA_GLOB}"
+                --glob-patterns      "${MODELMETA_GLOB}"
                 --cpp-header-output  "${MODELMETA_HEADER}"
                 --cpp-source-output  "${MODELMETA_SOURCE}"
         DEPENDS ${CMAKE_SOURCE_DIR}/schema/modelmeta.schema.json
@@ -50,7 +53,7 @@ class ModelMetaConfig:
     float_precision: Optional[int] = 6
     unpack_textures: bool = True
     texture_output_dir: str = "textures"
-    glob_pattern: Optional[str] = "assets/**/*"
+    glob_patterns: List[str] = field(default_factory=lambda: ["assets/**/*"])
     output_path: Optional[Path] = None
     schema_path: Path = Path("schema/modelmeta.schema.json")
 
@@ -72,14 +75,12 @@ class ModelMetaConfig:
     # =========================================================================
     # cpp_json_codegen.py  (JSON schema → C++ .cpp with to_json/from_json)
     # =========================================================================
-    json_schema_path: Path = Path("schema/modelmeta.schema.json")
     cpp_source_output: Path = Path("src/modelmeta.cpp")
     header_include: str = "modelmeta.h"
 
     # =========================================================================
     # schema_to_cpp.py  (JSON/YAML schema → C++ struct/enum header)
     # =========================================================================
-    cpp_schema_path: Path = Path("schema/modelmeta.schema.json")
     cpp_header_output: Path = Path("include/modelmeta.h")
     pch_output: Optional[Path] = Path("include/pch.h")
     debug_yaml: Optional[Path] = None
@@ -117,7 +118,7 @@ def build_argparser() -> argparse.ArgumentParser:
         action="store_false",
     )
     parser.add_argument("--texture-output-dir", type=str, default=None)
-    parser.add_argument("--glob-pattern", type=str, default=None)
+    parser.add_argument("--glob-patterns", type=str, nargs="+", default=None)
     parser.add_argument("--output-path", type=_path_type, default=None)
     parser.add_argument("--schema-path", type=_path_type, default=None)
 
@@ -133,12 +134,10 @@ def build_argparser() -> argparse.ArgumentParser:
     parser.add_argument("--parse-function", type=str, default=None)
 
     # -- cpp_json_codegen.py ------------------------------------------------
-    parser.add_argument("--json-schema-path", type=_path_type, default=None)
     parser.add_argument("--cpp-source-output", type=_path_type, default=None)
     parser.add_argument("--header-include", type=str, default=None)
 
     # -- schema_to_cpp.py ----------------------------------------------------
-    parser.add_argument("--cpp-schema-path", type=_path_type, default=None)
     parser.add_argument("--cpp-header-output", type=_path_type, default=None)
     parser.add_argument("--pch-output", type=_path_type, default=None)
     parser.add_argument("--debug-yaml", type=_path_type, default=None)
