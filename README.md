@@ -32,49 +32,34 @@ pip install -r requirements.txt
 
 ## 使用方式
 
-### 单文件模式
+所有参数通过编辑 `generator_configs.py` 中的 `GeneratorConfig` 配置，无需 CLI 参数。
 
 ```bash
-python gltf_meta_generator.py model.glb
-# 输出：同级目录下 model.modelmeta.json
-
-# 指定输出路径
-python gltf_meta_generator.py model.glb -o output.json
+python gltf_meta_generator.py
 ```
 
-### Glob 批量模式
+### 配置选项（`generator_configs.py`）
 
-输入为 glob 模式时，`-o` 必须指向目录（以 `/` 或 `\` 结尾）。
+| 参数 | 说明 |
+|------|------|
+| `glob_pattern` | 输入文件匹配模式。`None` 时处理单个文件，例如 `"assets/**/*.glb"` |
+| `output_path` | 输出路径。`None`（默认）时在模型文件同级目录就地生成 `.modelmeta.json`；指定目录时输出到该目录 |
+| `unpack_textures` | 是否提取内嵌纹理，默认 `True` |
+| `texture_output_dir` | 纹理解包输出目录，默认 `"textures"`（相对于 output_path 的上级目录） |
+| `schema_path` | JSON Schema 路径，默认 `schema/modelmeta.schema.json` |
+| `float_precision` | 浮点数截断位数，`None` 表示不截断，默认 `6` |
+| `namespace` | C++ 命名空间，`None` 或 `"dc::meta"` |
+| `type_naming` | 类型命名风格：`BigCamel` / `smallCamel` / `snake` / `SCREAMING` |
+| `member_naming` | 成员变量命名风格 |
+| `enum_naming` | 枚举值命名风格 |
+| `function_naming` | 函数签名命名风格 |
+| `root_cpp_type` | 根 C++ 类型名，默认 `"ModelMeta"` |
+| `parse_function` | 解析函数名，默认 `"Parse"` |
 
-```bash
-python gltf_meta_generator.py "assets/**/*.glb" -o output_dir/
-# 输出：output_dir/<文件名>.modelmeta.json
-```
+### 默认行为
 
-### 导出嵌入纹理（`--unpack`）
-
-将 GLTF/GLB 中内嵌的纹理提取为文件，并在元数据中更新为相对路径。
-
-```bash
-python gltf_meta_generator.py model.glb --unpack
-# 提取到 model.glb 同级 textures/ 目录，文件名带 <模型名>_ 前缀防冲突
-
-# 自定义纹理输出目录
-python gltf_meta_generator.py model.glb --unpack --texture-output ./my_textures
-```
-
-### 自定义 Schema
-
-```bash
-python gltf_meta_generator.py model.glb --schema my_schema.json
-```
-
-### 浮点精度控制
-
-```bash
-python gltf_meta_generator.py model.glb --float-precision 4
-# 使用 -1 关闭截断
-```
+- `output_path` 未指定时：在模型文件所在目录就地生成 `textures/` 和 `<模型名>.modelmeta.json`
+- `glob_pattern` 未指定时：需要传入单个文件路径
 
 ---
 

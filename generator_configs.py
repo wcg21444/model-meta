@@ -18,7 +18,7 @@ class GeneratorConfig:
     unpack_textures: bool = True
     texture_output_dir: str = "textures"
     glob_pattern: Optional[str] = "assets/**/*"
-    output_path: Optional[Path] = "output/"
+    output_path: Optional[Path] = None
     schema_path: Path = Path("schema/modelmeta.schema.json")
     root_cpp_type: str = "ModelMeta"
     parse_function: str = "Parse"

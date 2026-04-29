@@ -29,17 +29,8 @@ def iter_input_files(input_pattern: str) -> tuple[list[Path], bool]:
 
 
 def resolve_output_path(model_path: Path, output_arg: Path | None, is_glob: bool) -> Path:
-    if is_glob:
-        if output_arg is None:
-            raise ValueError("glob mode requires -o/--output to point to an output directory")
-        if output_arg.suffix:
-            raise ValueError("glob mode -o/--output must be a directory, not a file")
-        return output_arg / f"{model_path.stem}.modelmeta.json"
-
     if output_arg is not None:
-        if output_arg.exists() and output_arg.is_dir():
-            return output_arg / f"{model_path.stem}.modelmeta.json"
-        if str(output_arg).endswith(("/", "\\")):
+        if is_glob or output_arg.exists() and output_arg.is_dir() or str(output_arg).endswith(("/", "\\")):
             return output_arg / f"{model_path.stem}.modelmeta.json"
         return output_arg
     return model_path.with_name(f"{model_path.stem}.modelmeta.json")

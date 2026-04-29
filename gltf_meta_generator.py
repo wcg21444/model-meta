@@ -1,8 +1,11 @@
-"""CLI entrypoint for generating .modelmeta.json files from GLTF/GLB models."""
+"""Entrypoint for generating .modelmeta.json files from GLTF/GLB models.
+
+All parameters are read from generator_configs.py (DEFAULT_CONFIG).
+Edit that file to configure input, output, naming, and other options.
+"""
 
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
 
@@ -15,65 +18,10 @@ from modelmeta.texture_unpacker import unpack_embedded_textures
 from symbol_map import apply_json_field_mapping
 
 
-_NAMING_CHOICES = ["BigCamel", "smallCamel", "snake", "SCREAMING"]
-
-
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate model metadata JSON from GLTF/GLB files.")
-    parser.add_argument("input", help="Input .gltf/.glb file or glob pattern.")
-    parser.add_argument("-o", "--output", help="Output JSON file or output directory for glob mode.")
-    parser.add_argument("--schema", default=str(DEFAULT_CONFIG.schema_path), help="JSON schema path.")
-    parser.add_argument("--unpack", action="store_true", help="Extract embedded textures.")
-    parser.add_argument("--texture-output", help="Directory for unpacked textures.")
-    parser.add_argument(
-        "--float-precision",
-        type=int,
-        default=DEFAULT_CONFIG.float_precision,
-        help="Number of digits used for floating point rounding. Use -1 to disable.",
-    )
-    parser.add_argument("--namespace", default=DEFAULT_CONFIG.namespace, help="Optional C++ namespace.")
-    parser.add_argument(
-        "--type-naming", default=DEFAULT_CONFIG.type_naming, choices=_NAMING_CHOICES, help="C++ struct naming style."
-    )
-    parser.add_argument(
-        "--member-naming", default=DEFAULT_CONFIG.member_naming, choices=_NAMING_CHOICES, help="C++ member naming style."
-    )
-    parser.add_argument(
-        "--enum-naming", default=DEFAULT_CONFIG.enum_naming, choices=_NAMING_CHOICES, help="C++ enum naming style."
-    )
-    parser.add_argument(
-        "--function-naming",
-        default=DEFAULT_CONFIG.function_naming,
-        choices=_NAMING_CHOICES,
-        help="C++ function naming style.",
-    )
-    parser.add_argument("--root-type", default=DEFAULT_CONFIG.root_cpp_type, help="Root C++ type name.")
-    parser.add_argument("--parse-function", default=DEFAULT_CONFIG.parse_function, help="Parse function name.")
-    return parser.parse_args(argv)
-
-
-def config_from_args(args: argparse.Namespace) -> GeneratorConfig:
-    precision = None if args.float_precision is not None and args.float_precision < 0 else args.float_precision
-    return GeneratorConfig(
-        namespace=args.namespace,
-        type_naming=args.type_naming,
-        member_naming=args.member_naming,
-        enum_naming=args.enum_naming,
-        function_naming=args.function_naming,
-        float_precision=precision,
-        unpack_textures=args.unpack,
-        texture_output_dir=args.texture_output or DEFAULT_CONFIG.texture_output_dir,
-        output_path=Path(args.output) if args.output else None,
-        schema_path=Path(args.schema),
-        root_cpp_type=args.root_type,
-        parse_function=args.parse_function,
-    )
-
-
-def generate_for_file(model_path: Path, output_arg: Path | None, is_glob: bool, config: GeneratorConfig) -> Path:
-    output_path = resolve_output_path(model_path, output_arg, is_glob)
+def generate_for_file(model_path: Path, is_glob: bool, config: GeneratorConfig) -> Path:
+    output_path = resolve_output_path(model_path, config.output_path, is_glob)
     document = load_model(model_path)
-    texture_overrides = {}
+    texture_overrides: dict[int, str] = {}
     if config.unpack_textures:
         texture_overrides = unpack_embedded_textures(document, output_path, config.texture_output_dir)
 
@@ -85,12 +33,15 @@ def generate_for_file(model_path: Path, output_arg: Path | None, is_glob: bool, 
     return output_path
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
-    config = config_from_args(args)
+def main(config: GeneratorConfig | None = None) -> int:
+    if config is None:
+        config = DEFAULT_CONFIG
+    if not config.glob_pattern:
+        print("error: glob_pattern is not set in generator_configs.py. Set it to a model path or glob pattern.", file=sys.stderr)
+        return 1
     try:
-        files, is_glob = iter_input_files(args.input)
-        outputs = [generate_for_file(path, config.output_path, is_glob, config) for path in files]
+        files, is_glob = iter_input_files(config.glob_pattern)
+        outputs = [generate_for_file(path, is_glob, config) for path in files]
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

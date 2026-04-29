@@ -137,3 +137,5 @@ python tools/schema_to_cpp.py schema/modelmeta.schema.json -o include/modelmeta.
 ```bash
 python tools/schema_to_cpp.py schema/modelmeta.schema.json -o modelmeta.h --sync modelmeta.h
 ```
+
+取消所有CLI参数.用configs文件参数代替CLI参数. output_path不指定的默认行为: 在文件目录就地生成textures 和modelmeta.json.
