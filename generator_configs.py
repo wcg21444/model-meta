@@ -11,7 +11,7 @@ from typing import Optional
 class GeneratorConfig:
     namespace: Optional[str] = None
     type_naming: str = "BigCamel"
-    member_naming: str = "snake"
+    member_naming: str = "smallCamel"
     enum_naming: str = "BigCamel"
     function_naming: str = "BigCamel"
     float_precision: Optional[int] = 6

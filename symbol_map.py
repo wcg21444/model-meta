@@ -8,6 +8,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from generator_configs import DEFAULT_CONFIG
+from naming_converter import convert_name
+
 
 JSON_FIELD_MAP: dict[str, str] = {
     "model_type": "model_type",
@@ -58,15 +61,31 @@ CPP_MEMBER_NAME_MAP: dict[str, str] = {
 
 
 def json_field(name: str) -> str:
+    """JSON output field names are not affected by C++ naming styles."""
     return JSON_FIELD_MAP.get(name, name)
 
 
 def cpp_type(name: str) -> str:
-    return CPP_TYPE_NAME_MAP.get(name, name)
+    """Resolve C++ struct name: symbol map -> snake canonical -> type_naming."""
+    mapped = CPP_TYPE_NAME_MAP.get(name, name)
+    return convert_name(mapped, DEFAULT_CONFIG.type_naming)
 
 
 def cpp_member(name: str) -> str:
-    return CPP_MEMBER_NAME_MAP.get(name, name)
+    """Resolve C++ member name: symbol map -> snake canonical -> member_naming."""
+    mapped = CPP_MEMBER_NAME_MAP.get(name, name)
+    return convert_name(mapped, DEFAULT_CONFIG.member_naming)
+
+
+def cpp_function(name: str) -> str:
+    """Resolve C++ function name: snake canonical -> function_naming."""
+    return convert_name(name, DEFAULT_CONFIG.function_naming)
+
+
+def cpp_enum(name: str) -> str:
+    """Resolve C++ enum name: symbol map -> snake canonical -> enum_naming."""
+    mapped = CPP_TYPE_NAME_MAP.get(name, name)
+    return convert_name(mapped, DEFAULT_CONFIG.enum_naming)
 
 
 def apply_json_field_mapping(value: Any) -> Any:
