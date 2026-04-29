@@ -22,7 +22,7 @@ def render_cpp(config: ModelMetaConfig) -> str:
     root_type = convert_name(config.root_cpp_type, config.type_naming)
     parse_function = convert_name(config.parse_function, config.function_naming)
     schema = load_schema(config.schema_path)
-    structs = build_structs(schema, root_type)
+    structs, _enums = build_structs(schema, root_type)
     lines: list[str] = [
         f'#include "{config.header_include}"',
         "",

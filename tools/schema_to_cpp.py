@@ -17,14 +17,37 @@ if str(ROOT) not in sys.path:
 
 from model_meta_configs import DEFAULT_CONFIG, ModelMetaConfig
 from naming_converter import convert_name
-from tools.cpp_schema import build_structs, load_schema, namespace_close, namespace_open
+from tools.cpp_schema import (
+    CppEnum,
+    CppStruct,
+    build_structs,
+    load_schema,
+    namespace_close,
+    namespace_open,
+)
+
+
+def render_enum(enum: CppEnum) -> str:
+    """Render a single enum class with NLOHMANN_JSON_SERIALIZE_ENUM."""
+    lines = [f"enum class {enum.cpp_name} {{"]
+    for value in enum.values:
+        lines.append(f"  {value},")
+    lines.append("};")
+    # nlohmann macro requires {EnumValue, "json_string"} pairs
+    pairs = [f"{{{enum.cpp_name}::{v}, \"{v}\"}}" for v in enum.values]
+    lines.append(
+        f"NLOHMANN_JSON_SERIALIZE_ENUM({enum.cpp_name}, {{\n    {', '.join(pairs)}\n}})"
+    )
+    lines.append("")
+    return "\n".join(lines)
 
 
 def render_header(config: ModelMetaConfig) -> str:
     root_type = convert_name(config.root_cpp_type, config.type_naming)
     parse_function = convert_name(config.parse_function, config.function_naming)
     schema = load_schema(config.schema_path)
-    structs = build_structs(schema, root_type)
+    structs, enums = build_structs(schema, root_type)
+
     lines: list[str] = [
         "#pragma once",
         "",
@@ -37,6 +60,11 @@ def render_header(config: ModelMetaConfig) -> str:
     if config.namespace:
         lines.append(namespace_open(config.namespace).rstrip())
         lines.append("")
+
+    # Render enums first (before structs that reference them)
+    for enum in enums:
+        lines.append(render_enum(enum))
+
     for struct in structs:
         lines.append(f"struct {struct.cpp_name} {{")
         if struct.fields:
@@ -44,6 +72,7 @@ def render_header(config: ModelMetaConfig) -> str:
                 lines.append(f"  {field.cpp_type} {field.member_name}{{}};")
         lines.append("};")
         lines.append("")
+
     lines.append(f"{root_type} {parse_function}(const std::string& jsonStr);")
     lines.append("")
     if config.namespace:
@@ -56,7 +85,10 @@ def validate_with_clang(header_path: Path) -> None:
     try:
         from clang import cindex
     except ImportError:
-        print("warning: clang Python bindings are not installed; skipped libclang validation", file=sys.stderr)
+        print(
+            "warning: clang Python bindings are not installed; skipped libclang validation",
+            file=sys.stderr,
+        )
         return
 
     try:
@@ -73,7 +105,9 @@ def validate_with_clang(header_path: Path) -> None:
             file=sys.stderr,
         )
         return
-    diagnostics = [diag for diag in translation_unit.diagnostics if diag.severity >= diag.Error]
+    diagnostics = [
+        diag for diag in translation_unit.diagnostics if diag.severity >= diag.Error
+    ]
     if diagnostics:
         message = "\n".join(str(diag) for diag in diagnostics)
         raise RuntimeError(f"libclang validation failed:\n{message}")
