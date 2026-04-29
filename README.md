@@ -3,6 +3,7 @@
 ## 概述
 
     编写一个python+trimesh脚本,解析gltf 文件,生成指定Scheme的元数据(.meta.json)
+    使用libclang作为 C++解析后端. C++的JSON后端是nlohmann/json
 
 ## 输出格式
 
@@ -10,13 +11,15 @@
 
 ## 元数据
 
-    "model_type":"skeletal"|"static" //识别模型是否存在骨架骨骼
+```
+    "model_type":"Skeletal"|"Static" //识别模型是否存在骨架骨骼
     "bouding_box":["min":float3,"max":float3] //模型包围盒,用于剔除
     "model_part": [
         {
-            "name":<>,
+            "model_name":<>,
             "bounding_box":<>
             "material":{
+                "mat_name",
                 "is_pbr",
                 "textures":[
                     "base_color",
@@ -24,7 +27,7 @@
                     "roughness(optional)",
                     "normal(optional)",
                 ]// 相对路径纹理槽位
-                "alpha_mode": "OPAQUE"|"CUTOUT"|"TRANSPARENT",
+                "alpha_mode": "Opaque"|"Cutout"|"Transparent",
                 "roughness": 0.8,
                 "metallic": 0.0
             }
@@ -33,10 +36,40 @@
     "skeleton":[
         {
             "node_name",
-            "model_part" :[]
+            "model_part" :[<model_part_name in "model_part">]
 
         }
     ]// skeletal文件生成,用于生成物体节点层级架构
+    "textures":[<pathes from all materials>],
+    "material":[name from all model_part]
+```
+
+## 输出内容
+
+- 元数据. <>.modelmeta.json
+- 解包纹理图片 -> ./textures/ 或者参数指定路径
+- c++ header,
+- c++ 自动生成的序列化代码,在cpp中实现, 向Header暴露 T Parse(string jsonStr)函数接口
+
+## scheme
+
+- 将 C++ 结构和变量名与JSON字段的映射制成一张python表/字典(symbol_map.py), 允许用户修改字段映射表而不影响元数据生成逻辑.
+- 当映射表发生改变,C++Scheme和序列化代码同步更新
+
+## configs
+
+- 配置(generator_configs.py)
+  - 允许自定义命名空间,这由映射表实现. 可选值: none,<namespace>:指定命名空间
+  - 指定命名规则:
+    - 可选项: Big Camel ;Small Camel; snake; SCREAMING;
+    - 针对字段: 变量字段|枚举名|命名空间|生成的函数签名
+  - 浮点数截断位数 : none | number
+  - 解包packin textures : bool
+  - 解包输出路径: string
+  - glob pattern :string
+  - output path :string
+
+## Cmake集成
 
 ## 依赖安装
 
@@ -103,10 +136,4 @@ python tools/schema_to_cpp.py schema/modelmeta.schema.json -o include/modelmeta.
 
 ```bash
 python tools/schema_to_cpp.py schema/modelmeta.schema.json -o modelmeta.h --sync modelmeta.h
-```
-
-### 跳过验证 / 自定义命名空间
-
-```bash
-python tools/schema_to_cpp.py schema/modelmeta.schema.json -o modelmeta.h --namespace mygame --no-validate
 ```
