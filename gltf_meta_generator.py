@@ -1,6 +1,6 @@
 """Entrypoint for generating .modelmeta.json files from GLTF/GLB models.
 
-All parameters are read from generator_configs.py (DEFAULT_CONFIG).
+All parameters are read from model_meta_configs.py (DEFAULT_CONFIG).
 Edit that file to configure input, output, naming, and other options.
 """
 
@@ -9,7 +9,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from generator_configs import DEFAULT_CONFIG, GeneratorConfig
+from model_meta_configs import DEFAULT_CONFIG, ModelMetaConfig
 from modelmeta.gltf_reader import load_model
 from modelmeta.metadata_builder import build_metadata
 from modelmeta.output_writer import iter_input_files, resolve_output_path, write_metadata
@@ -18,7 +18,7 @@ from modelmeta.texture_unpacker import unpack_embedded_textures
 from symbol_map import apply_json_field_mapping
 
 
-def generate_for_file(model_path: Path, is_glob: bool, config: GeneratorConfig) -> Path:
+def generate_for_file(model_path: Path, is_glob: bool, config: ModelMetaConfig) -> Path:
     output_path = resolve_output_path(model_path, config.output_path, is_glob)
     document = load_model(model_path)
     texture_overrides: dict[int, str] = {}
@@ -33,11 +33,11 @@ def generate_for_file(model_path: Path, is_glob: bool, config: GeneratorConfig) 
     return output_path
 
 
-def main(config: GeneratorConfig | None = None) -> int:
+def main(config: ModelMetaConfig | None = None) -> int:
     if config is None:
         config = DEFAULT_CONFIG
     if not config.glob_pattern:
-        print("error: glob_pattern is not set in generator_configs.py. Set it to a model path or glob pattern.", file=sys.stderr)
+        print("error: glob_pattern is not set in model_meta_configs.py. Set it to a model path or glob pattern.", file=sys.stderr)
         return 1
     try:
         files, is_glob = iter_input_files(config.glob_pattern)

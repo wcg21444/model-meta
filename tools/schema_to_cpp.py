@@ -1,8 +1,11 @@
-"""Generate C++17 structs from the model metadata JSON Schema."""
+"""Generate C++17 structs from the model metadata JSON Schema.
+
+All parameters are read from model_meta_configs.py (DEFAULT_CONFIG).
+Edit that file to configure schema, output, naming, and other options.
+"""
 
 from __future__ import annotations
 
-import argparse
 import shutil
 import sys
 import tempfile
@@ -12,27 +15,15 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from generator_configs import DEFAULT_CONFIG
+from model_meta_configs import DEFAULT_CONFIG, ModelMetaConfig
 from naming_converter import convert_name
 from tools.cpp_schema import build_structs, load_schema, namespace_close, namespace_open
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate a C++17 header from a JSON Schema.")
-    parser.add_argument("schema", help="Input JSON Schema.")
-    parser.add_argument("-o", "--output", required=True, help="Output header path.")
-    parser.add_argument("--namespace", default=DEFAULT_CONFIG.namespace, help="Optional C++ namespace, e.g. dc::meta.")
-    parser.add_argument("--root-type", default=DEFAULT_CONFIG.root_cpp_type, help="Root C++ type name.")
-    parser.add_argument("--parse-function", default=DEFAULT_CONFIG.parse_function, help="Parse function declaration name.")
-    parser.add_argument("--sync", help="Existing header to sync. The output path is rewritten from schema.")
-    parser.add_argument("--skip-clang", action="store_true", help="Skip optional libclang validation.")
-    return parser.parse_args(argv)
-
-
-def render_header(schema_path: Path, namespace: str | None, root_type: str, parse_function: str) -> str:
-    root_type = convert_name(root_type, DEFAULT_CONFIG.type_naming)
-    parse_function = convert_name(parse_function, DEFAULT_CONFIG.function_naming)
-    schema = load_schema(schema_path)
+def render_header(config: ModelMetaConfig) -> str:
+    root_type = convert_name(config.root_cpp_type, config.type_naming)
+    parse_function = convert_name(config.parse_function, config.function_naming)
+    schema = load_schema(config.cpp_schema_path)
     structs = build_structs(schema, root_type)
     lines: list[str] = [
         "#pragma once",
@@ -43,8 +34,8 @@ def render_header(schema_path: Path, namespace: str | None, root_type: str, pars
         "#include <nlohmann/json.hpp>",
         "",
     ]
-    if namespace:
-        lines.append(namespace_open(namespace).rstrip())
+    if config.namespace:
+        lines.append(namespace_open(config.namespace).rstrip())
         lines.append("")
     for struct in structs:
         lines.append(f"struct {struct.cpp_name} {{")
@@ -55,8 +46,8 @@ def render_header(schema_path: Path, namespace: str | None, root_type: str, pars
         lines.append("")
     lines.append(f"{root_type} {parse_function}(const std::string& jsonStr);")
     lines.append("")
-    if namespace:
-        lines.append(namespace_close(namespace).rstrip())
+    if config.namespace:
+        lines.append(namespace_close(config.namespace).rstrip())
         lines.append("")
     return "\n".join(lines)
 
@@ -88,19 +79,20 @@ def validate_with_clang(header_path: Path) -> None:
         raise RuntimeError(f"libclang validation failed:\n{message}")
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
-    output = Path(args.output)
+def main(config: ModelMetaConfig | None = None) -> int:
+    if config is None:
+        config = DEFAULT_CONFIG
+    output = config.cpp_header_output
     try:
-        header = render_header(Path(args.schema), args.namespace, args.root_type, args.parse_function)
+        header = render_header(config)
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(header, encoding="utf-8")
-        if args.sync:
-            sync_path = Path(args.sync)
+        if config.schema_to_cpp_sync_path:
+            sync_path = config.schema_to_cpp_sync_path
             if sync_path.resolve() != output.resolve():
                 sync_path.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copyfile(output, sync_path)
-        if not args.skip_clang:
+        if not config.schema_to_cpp_skip_clang:
             with tempfile.TemporaryDirectory() as tmp:
                 validation_path = Path(tmp) / output.name
                 validation_path.write_text(header, encoding="utf-8")

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from generator_configs import DEFAULT_CONFIG
+from model_meta_configs import DEFAULT_CONFIG
 from naming_converter import convert_name
 
 

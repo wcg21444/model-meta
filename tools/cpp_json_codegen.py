@@ -1,8 +1,11 @@
-"""Generate nlohmann/json serialization code for model metadata structs."""
+"""Generate nlohmann/json serialization code for model metadata structs.
+
+All parameters are read from model_meta_configs.py (DEFAULT_CONFIG).
+Edit that file to configure schema, output, naming, and other options.
+"""
 
 from __future__ import annotations
 
-import argparse
 import sys
 from pathlib import Path
 
@@ -10,41 +13,24 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from generator_configs import DEFAULT_CONFIG
+from model_meta_configs import DEFAULT_CONFIG, ModelMetaConfig
 from naming_converter import convert_name
 from tools.cpp_schema import build_structs, load_schema, namespace_close, namespace_open
 
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate nlohmann/json serialization .cpp code.")
-    parser.add_argument("schema", help="Input JSON Schema.")
-    parser.add_argument("-o", "--output", required=True, help="Output .cpp path.")
-    parser.add_argument("--header", default="modelmeta.h", help="Header include path used by generated .cpp.")
-    parser.add_argument("--namespace", default=DEFAULT_CONFIG.namespace, help="Optional C++ namespace, e.g. dc::meta.")
-    parser.add_argument("--root-type", default=DEFAULT_CONFIG.root_cpp_type, help="Root C++ type name.")
-    parser.add_argument("--parse-function", default=DEFAULT_CONFIG.parse_function, help="Parse function name.")
-    return parser.parse_args(argv)
-
-
-def render_cpp(
-    schema_path: Path,
-    header: str,
-    namespace: str | None,
-    root_type: str,
-    parse_function: str,
-) -> str:
-    root_type = convert_name(root_type, DEFAULT_CONFIG.type_naming)
-    parse_function = convert_name(parse_function, DEFAULT_CONFIG.function_naming)
-    schema = load_schema(schema_path)
+def render_cpp(config: ModelMetaConfig) -> str:
+    root_type = convert_name(config.root_cpp_type, config.type_naming)
+    parse_function = convert_name(config.parse_function, config.function_naming)
+    schema = load_schema(config.json_schema_path)
     structs = build_structs(schema, root_type)
     lines: list[str] = [
-        f'#include "{header}"',
+        f'#include "{config.header_include}"',
         "",
         "#include <utility>",
         "",
     ]
-    if namespace:
-        lines.append(namespace_open(namespace).rstrip())
+    if config.namespace:
+        lines.append(namespace_open(config.namespace).rstrip())
         lines.append("")
     for struct in structs:
         lines.extend(render_to_json(struct.cpp_name, struct.fields))
@@ -59,8 +45,8 @@ def render_cpp(
             "",
         ]
     )
-    if namespace:
-        lines.append(namespace_close(namespace).rstrip())
+    if config.namespace:
+        lines.append(namespace_close(config.namespace).rstrip())
         lines.append("")
     return "\n".join(lines)
 
@@ -89,17 +75,17 @@ def render_from_json(cpp_name: str, fields: list[object]) -> list[str]:
     return lines
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
-    output = Path(args.output)
+def main(config: ModelMetaConfig | None = None) -> int:
+    if config is None:
+        config = DEFAULT_CONFIG
     try:
-        code = render_cpp(Path(args.schema), args.header, args.namespace, args.root_type, args.parse_function)
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(code, encoding="utf-8")
+        code = render_cpp(config)
+        config.cpp_source_output.parent.mkdir(parents=True, exist_ok=True)
+        config.cpp_source_output.write_text(code, encoding="utf-8")
     except Exception as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    print(output)
+    print(config.cpp_source_output)
     return 0
 
 

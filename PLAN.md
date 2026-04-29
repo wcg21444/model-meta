@@ -16,7 +16,7 @@
   - `modelmeta/schema_loader.py` 负责 Schema 加载与校验。
   - `modelmeta/output_writer.py` 负责单文件和批量输出。
 - 新增配置与映射：
-  - `generator_configs.py` 提供默认配置，包括命名空间、命名规则、float 截断位数、默认输出路径、纹理解包配置。
+  - `model_meta_configs.py` 提供默认配置，包括命名空间、命名规则、float 截断位数、默认输出路径、纹理解包配置。
   - `symbol_map.py` 维护 JSON 字段、Python 内部字段、C++ 类型/成员名之间的映射。
   - CLI 参数优先级高于配置文件。
 - 新增 Schema：
@@ -45,7 +45,7 @@
   - `tools/cpp_json_codegen.py` 生成 nlohmann/json `from_json/to_json` 和 `Parse(std::string jsonStr)`。
   - 结构体按 Schema 依赖拓扑排序。
   - 类型映射：string -> `std::string`，number -> `float`，integer -> `int`，boolean -> `bool`，array -> `std::vector<T>`，object -> struct。
-  - namespace、结构体名、成员名、函数名由 `generator_configs.py` 和 `symbol_map.py` 控制。
+  - namespace、结构体名、成员名、函数名由 `model_meta_configs.py` 和 `symbol_map.py` 控制。
 - 实现 libclang 校验：
   - Header 生成后调用 libclang 解析。
   - 校验失败时输出文件、行号、诊断信息。

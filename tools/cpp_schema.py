@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from generator_configs import DEFAULT_CONFIG
+from model_meta_configs import DEFAULT_CONFIG
 from symbol_map import cpp_member, cpp_type
 
 

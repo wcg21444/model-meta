@@ -32,13 +32,13 @@ pip install -r requirements.txt
 
 ## 使用方式
 
-所有参数通过编辑 `generator_configs.py` 中的 `GeneratorConfig` 配置，无需 CLI 参数。
+所有参数通过编辑 `model_meta_configs.py` 中的 `GeneratorConfig` 配置，无需 CLI 参数。
 
 ```bash
 python gltf_meta_generator.py
 ```
 
-### 配置选项（`generator_configs.py`）
+### 配置选项（`model_meta_configs.py`）
 
 | 参数 | 说明 |
 |------|------|
@@ -168,7 +168,7 @@ modelmeta_generate_cpp(
 
 ```
 ├── gltf_meta_generator.py      # CLI 入口
-├── generator_configs.py        # 默认配置（命名空间、命名规则、精度等）
+├── model_meta_configs.py        # 默认配置（命名空间、命名规则、精度等）
 ├── symbol_map.py               # JSON / C++ 字段与符号映射表
 ├── schema/
 │   └── modelmeta.schema.json   # 元数据 JSON Schema
@@ -191,7 +191,7 @@ modelmeta_generate_cpp(
 
 ## 配置与自定义
 
-编辑 `generator_configs.py` 可调整：
+编辑 `model_meta_configs.py` 可调整：
 
 | 配置项 | 说明 |
 |--------|------|

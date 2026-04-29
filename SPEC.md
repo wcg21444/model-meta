@@ -58,7 +58,7 @@
 
 ## configs
 
-- 配置(generator_configs.py)
+- 配置(model_meta_configs.py)
   - 允许自定义命名空间,这由映射表实现. 可选值: none,<namespace>:指定命名空间
   - 指定命名规则:
     - 可选项: Big Camel ;Small Camel; snake; SCREAMING;
