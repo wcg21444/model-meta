@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -21,7 +22,9 @@ def build_metadata(
     texture_overrides = texture_overrides or {}
     material_by_name = _collect_gltf_materials(document, texture_overrides)
     default_material = _default_material()
-    model_parts = _collect_model_parts(document, material_by_name, default_material, float_precision)
+    model_parts, mesh_index_to_part_name = _collect_model_parts(
+        document, material_by_name, default_material, float_precision
+    )
     textures = _unique(
         texture
         for part in model_parts
@@ -39,7 +42,7 @@ def build_metadata(
         "material": materials,
     }
     if has_skeleton:
-        metadata["skeleton"] = _collect_skeleton(document, [part["model_name"] for part in model_parts])
+        metadata["skeleton"] = _collect_skeleton(document, mesh_index_to_part_name)
     return metadata
 
 
@@ -48,13 +51,27 @@ def _collect_model_parts(
     material_by_name: dict[str, dict[str, Any]],
     default_material: dict[str, Any],
     float_precision: int | None,
-) -> list[dict[str, Any]]:
+) -> tuple[list[dict[str, Any]], dict[int, str]]:
     parts: list[dict[str, Any]] = []
     scene = document.scene
     geometry = getattr(scene, "geometry", {}) or {}
-    for index, (geometry_name, mesh) in enumerate(geometry.items()):
+
+    mesh_names = _resolve_mesh_names(document)
+    geom_to_mesh = _map_geometry_to_mesh_index(document)
+    mesh_index_to_part_name: dict[int, str] = {}
+
+    for geom_key, mesh in geometry.items():
+        mesh_index = geom_to_mesh.get(geom_key)
+        if mesh_index is not None:
+            name = mesh_names.get(mesh_index, str(geom_key))
+        else:
+            name = str(geom_key)
+
+        # Sanitize auto-generated trimesh names like GLTF / GLTF_1
+        if _is_trimesh_generated_name(name):
+            name = f"mesh_{mesh_index}" if mesh_index is not None else str(geom_key)
+
         material = _material_from_mesh(mesh, material_by_name) or default_material
-        name = str(geometry_name or f"mesh_{index}")
         parts.append(
             {
                 "model_name": name,
@@ -62,9 +79,114 @@ def _collect_model_parts(
                 "material": material,
             }
         )
+
+        if mesh_index is not None:
+            mesh_index_to_part_name[mesh_index] = name
+
     if not parts:
-        parts.append({"model_name": document.path.stem, "bounding_box": EMPTY_BOUNDS, "material": default_material})
-    return parts
+        stem_name = document.path.stem
+        parts.append({"model_name": stem_name, "bounding_box": EMPTY_BOUNDS, "material": default_material})
+
+    return parts, mesh_index_to_part_name
+
+
+def _is_trimesh_generated_name(name: str) -> bool:
+    return name == "GLTF" or (name.startswith("GLTF_") and name[5:].isdigit())
+
+
+def _resolve_mesh_names(document: ModelDocument) -> dict[int, str]:
+    """Map GLTF mesh index to a human-readable name."""
+    gltf = document.gltf
+    if gltf is None:
+        return {}
+
+    meshes = getattr(gltf, "meshes", None) or []
+    nodes = getattr(gltf, "nodes", None) or []
+
+    names: dict[int, str] = {}
+
+    # First pass: use mesh name if available
+    for i, mesh in enumerate(meshes):
+        if mesh.name:
+            names[i] = mesh.name
+
+    # Second pass: for unnamed meshes, use referring node name
+    for node in nodes:
+        if node.mesh is not None and node.mesh not in names:
+            node_name = node.name
+            if node_name:
+                names[node.mesh] = node_name
+
+    # Third pass: fallback to mesh_{index}
+    for i in range(len(meshes)):
+        if i not in names:
+            names[i] = f"mesh_{i}"
+
+    return names
+
+
+def _map_geometry_to_mesh_index(document: ModelDocument) -> dict[str, int]:
+    """Map trimesh geometry keys to original GLTF mesh indices."""
+    scene = document.scene
+    gltf = document.gltf
+    geometry = getattr(scene, "geometry", {}) or {}
+
+    if gltf is None:
+        return {k: i for i, k in enumerate(geometry.keys())}
+
+    nodes = getattr(gltf, "nodes", None) or []
+
+    # Build trimesh node name -> geometry key mapping from scene graph
+    tm_node_to_geom: dict[str, str] = {}
+    for node_name in getattr(scene.graph, "nodes", []):
+        try:
+            _, geom_key = scene.graph[node_name]
+            if geom_key is not None:
+                tm_node_to_geom[node_name] = geom_key
+        except Exception:
+            pass
+
+    # Build pygltflib node name -> node indices mapping
+    pg_nodes_by_name: dict[str, list[int]] = {}
+    for i, node in enumerate(nodes):
+        name = node.name or f"node_{i}"
+        pg_nodes_by_name.setdefault(name, []).append(i)
+
+    result: dict[str, int] = {}
+    used_mesh_indices: set[int] = set()
+
+    for tm_node, geom_key in tm_node_to_geom.items():
+        for base in (tm_node, _strip_numeric_suffix(tm_node)):
+            candidates = pg_nodes_by_name.get(base, [])
+            found = False
+            for idx in candidates:
+                mesh_idx = nodes[idx].mesh
+                if mesh_idx is not None and mesh_idx not in used_mesh_indices:
+                    result[geom_key] = mesh_idx
+                    used_mesh_indices.add(mesh_idx)
+                    found = True
+                    break
+            if found:
+                break
+
+    # Fallback for GLTF/GLTF_N naming convention used by trimesh
+    for i, geom_key in enumerate(geometry.keys()):
+        if geom_key not in result:
+            if geom_key == "GLTF":
+                result[geom_key] = 0
+            elif geom_key.startswith("GLTF_"):
+                try:
+                    idx = int(geom_key.split("_", 1)[1])
+                    result[geom_key] = idx
+                except ValueError:
+                    pass
+
+    return result
+
+
+def _strip_numeric_suffix(name: str) -> str:
+    m = re.match(r"(.+)_(\d+)$", name)
+    return m.group(1) if m else name
 
 
 def _material_from_mesh(mesh: Any, material_by_name: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
@@ -169,21 +291,73 @@ def _has_skeleton(document: ModelDocument) -> bool:
     return bool(metadata.get("skins") or metadata.get("joints") or metadata.get("bones"))
 
 
-def _collect_skeleton(document: ModelDocument, model_part_names: list[str]) -> list[dict[str, Any]]:
+def _collect_skeleton(document: ModelDocument, mesh_index_to_part_name: dict[int, str]) -> list[dict[str, Any]]:
     gltf = document.gltf
     if gltf is None:
-        return [{"node_name": "skeleton", "model_part": model_part_names}]
+        return [{"node_name": "skeleton", "model_part": list(mesh_index_to_part_name.values())}]
+
     nodes = getattr(gltf, "nodes", None) or []
+    skins = getattr(gltf, "skins", None) or []
+
+    if not skins:
+        return [{"node_name": "skeleton", "model_part": list(mesh_index_to_part_name.values())}]
+
+    # Build node tree
+    node_children: dict[int, list[int]] = {i: [] for i in range(len(nodes))}
+    for i, node in enumerate(nodes):
+        for child in (node.children or []):
+            node_children[i].append(child)
+
+    # Helper: collect all mesh indices in a node's subtree (including itself)
+    def collect_subtree_meshes(node_idx: int, visited: set[int]) -> list[int]:
+        if node_idx in visited or node_idx >= len(nodes):
+            return []
+        visited.add(node_idx)
+        result: list[int] = []
+        node = nodes[node_idx]
+        if node.mesh is not None:
+            result.append(node.mesh)
+        for child in node_children[node_idx]:
+            result.extend(collect_subtree_meshes(child, visited))
+        return result
+
+    # Determine meshes directly associated with each skin (nodes with skin + mesh)
+    skin_direct_meshes: dict[int, list[int]] = {}
+    for skin_idx, skin in enumerate(skins):
+        associated: set[int] = set()
+        for node_idx, node in enumerate(nodes):
+            if node.skin == skin_idx and node.mesh is not None:
+                associated.add(node.mesh)
+        skin_direct_meshes[skin_idx] = sorted(associated)
+
+    # Build skeleton output
     result: list[dict[str, Any]] = []
     seen: set[int] = set()
-    for skin in getattr(gltf, "skins", None) or []:
-        for joint_index in getattr(skin, "joints", None) or []:
-            if joint_index in seen or joint_index >= len(nodes):
+
+    for skin_idx, skin in enumerate(skins):
+        direct_meshes = skin_direct_meshes.get(skin_idx, [])
+
+        for joint_idx in (skin.joints or []):
+            if joint_idx in seen or joint_idx >= len(nodes):
                 continue
-            seen.add(joint_index)
-            node = nodes[joint_index]
-            result.append({"node_name": node.name or f"joint_{joint_index}", "model_part": model_part_names})
-    return result or [{"node_name": "skeleton", "model_part": model_part_names}]
+            seen.add(joint_idx)
+            node = nodes[joint_idx]
+
+            # Use direct skin-mesh association if available; otherwise fall back to joint subtree
+            if direct_meshes:
+                mesh_indices = direct_meshes
+            else:
+                mesh_indices = collect_subtree_meshes(joint_idx, set())
+
+            part_names = [mesh_index_to_part_name[m] for m in mesh_indices if m in mesh_index_to_part_name]
+            part_names = list(dict.fromkeys(part_names))
+
+            result.append({
+                "node_name": node.name or f"joint_{joint_idx}",
+                "model_part": part_names,
+            })
+
+    return result or [{"node_name": "skeleton", "model_part": list(mesh_index_to_part_name.values())}]
 
 
 def _scene_bounds(scene: Any) -> Any:

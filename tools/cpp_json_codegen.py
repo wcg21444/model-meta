@@ -11,6 +11,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from generator_configs import DEFAULT_CONFIG
+from naming_converter import convert_name
 from tools.cpp_schema import build_structs, load_schema, namespace_close, namespace_open
 
 
@@ -32,6 +33,8 @@ def render_cpp(
     root_type: str,
     parse_function: str,
 ) -> str:
+    root_type = convert_name(root_type, DEFAULT_CONFIG.type_naming)
+    parse_function = convert_name(parse_function, DEFAULT_CONFIG.function_naming)
     schema = load_schema(schema_path)
     structs = build_structs(schema, root_type)
     lines: list[str] = [
