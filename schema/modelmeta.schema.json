@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://directcraft.local/schema/modelmeta.schema.json",
+  "title": "ModelMeta",
+  "type": "object",
+  "required": ["model_type", "bounding_box", "model_part", "textures", "material"],
+  "additionalProperties": false,
+  "properties": {
+    "model_type": {
+      "type": "string",
+      "enum": ["Skeletal", "Static"]
+    },
+    "bounding_box": {
+      "$ref": "#/$defs/BoundingBox"
+    },
+    "model_part": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ModelPart"
+      }
+    },
+    "skeleton": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/SkeletonNode"
+      }
+    },
+    "textures": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "material": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "$defs": {
+    "Float3": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "number"
+      }
+    },
+    "BoundingBox": {
+      "type": "object",
+      "required": ["min", "max"],
+      "additionalProperties": false,
+      "properties": {
+        "min": {
+          "$ref": "#/$defs/Float3"
+        },
+        "max": {
+          "$ref": "#/$defs/Float3"
+        }
+      }
+    },
+    "TextureSlots": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "base_color": {
+          "type": "string"
+        },
+        "metallic": {
+          "type": "string"
+        },
+        "roughness": {
+          "type": "string"
+        },
+        "normal": {
+          "type": "string"
+        }
+      }
+    },
+    "Material": {
+      "type": "object",
+      "required": ["mat_name", "is_pbr", "textures", "alpha_mode", "roughness", "metallic"],
+      "additionalProperties": false,
+      "properties": {
+        "mat_name": {
+          "type": "string"
+        },
+        "is_pbr": {
+          "type": "boolean"
+        },
+        "textures": {
+          "$ref": "#/$defs/TextureSlots"
+        },
+        "alpha_mode": {
+          "type": "string",
+          "enum": ["Opaque", "Cutout", "Transparent"]
+        },
+        "roughness": {
+          "type": "number"
+        },
+        "metallic": {
+          "type": "number"
+        }
+      }
+    },
+    "ModelPart": {
+      "type": "object",
+      "required": ["model_name", "bounding_box", "material"],
+      "additionalProperties": false,
+      "properties": {
+        "model_name": {
+          "type": "string"
+        },
+        "bounding_box": {
+          "$ref": "#/$defs/BoundingBox"
+        },
+        "material": {
+          "$ref": "#/$defs/Material"
+        }
+      }
+    },
+    "SkeletonNode": {
+      "type": "object",
+      "required": ["node_name", "model_part"],
+      "additionalProperties": false,
+      "properties": {
+        "node_name": {
+          "type": "string"
+        },
+        "model_part": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}
