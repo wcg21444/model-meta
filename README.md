@@ -33,15 +33,42 @@ pip install -r requirements.txt
 
 ## 使用方式
 
-参数通过编辑 `model_meta_configs.py` 中的 `ModelMetaConfig` 配置，或通过 CLI 参数传入。两步各自可独立运行，也可通过 `gltf_model_meta.py` 统一编排执行全部步骤。
+参数通过编辑 `model_meta_configs.py` 中的 `ModelMetaConfig` 配置，或通过 CLI 参数传入。也可通过 `--configs` 注入外部配置文件，避免修改仓库内文件。
 
 ```bash
-# 只生成 .modelmeta.json（使用配置文件中的设置）
+# 只生成 .modelmeta.json（使用配置文件中的默认设置）
 python gltf_meta_generator.py
 
-# 运行全部三步（GLTF → JSON + C++ Header + C++ Source），可通过 CLI 覆盖配置
+# 运行全部三步，通过 CLI 覆盖配置
 python gltf_model_meta.py --glob-patterns "assets/**/*.glb" --cpp-header-output include/modelmeta.h --cpp-source-output src/modelmeta.cpp
+
+# 注入外部配置文件（下游项目无需修改本仓库文件）
+python gltf_model_meta.py --configs ../my_project/model_meta_config.py
 ```
+
+### 外部配置文件（`--configs`）
+
+`--configs` 指向一个 Python 文件，该文件需要导出 `CONFIG`：
+
+```python
+# 方式1: 字典覆写（合并到 DEFAULT_CONFIG 之上）
+CONFIG = {
+    "namespace": "myns::model",
+    "glob_patterns": ["my_assets/**/*.glb"],
+    "cpp_header_output": Path("include/custom_modelmeta.h"),
+}
+
+# 方式2: ModelMetaConfig 实例（完全替换 DEFAULT_CONFIG）
+from model_meta_configs import ModelMetaConfig
+from pathlib import Path
+
+CONFIG = ModelMetaConfig(
+    namespace="myns::model",
+    glob_patterns=["my_assets/**/*.glb"],
+)
+```
+
+`model_meta_configs.py` 只包含 `ModelMetaConfig` dataclass 定义，不含 CLI/argparse 逻辑，因此外部配置文件可以安全地 `import` 它。
 
 ### 配置选项（`model_meta_configs.py`）
 
@@ -66,7 +93,20 @@ python gltf_model_meta.py --glob-patterns "assets/**/*.glb" --cpp-header-output 
 
 ### CLI 参数
 
-所有配置项均可通过 CLI 参数覆盖（由 `gltf_model_meta.py` 解析）：
+所有配置项均可通过 CLI 参数覆盖（由 `cli.py` 解析）：
+
+| CLI 标志 | 说明 |
+|---|---|
+| `--configs <path>` | 外部配置文件路径（注入 `CONFIG` 作为基础配置，其余 CLI 参数在此基础上覆写） |
+| `--glob-patterns` | 输入 glob 模式（可多个） |
+| `--output-path` | 输出路径 |
+| `--unpack-textures` / `--no-unpack-textures` | 纹理提取开关 |
+| `--float-precision` | 浮点数精度 |
+| `--namespace` | C++ 命名空间 |
+| `--cpp-header-output` | C++ 头文件输出路径 |
+| `--cpp-source-output` | C++ 源文件输出路径 |
+| `--header-include` | 头文件引用路径 |
+| ... | （完整列表见 `--help`） |
 
 ```bash
 python gltf_model_meta.py --glob-patterns "assets/**/*.glb" \
@@ -199,8 +239,9 @@ add_custom_command(
 ```
 ├── gltf_model_meta.py           # 主入口，编排三步流程
 ├── gltf_meta_generator.py       # 步骤1: GLTF/GLB → .modelmeta.json
-├── model_meta_configs.py        # 统一配置（命名空间、命名规则、精度等）
-├── naming_converter.py          # 命名风格转换（snake/BigCamel/smallCamel/SCREAMING）
+├── model_meta_configs.py        # ModelMetaConfig 纯 dataclass（不含 CLI 逻辑）
+├── cli.py                        # CLI 参数解析与外部配置注入
+├── naming_converter.py          # 命名风格转换
 ├── symbol_map.py                # JSON / C++ 字段与符号映射表
 ├── schema/
 │   └── modelmeta.schema.json    # 元数据 JSON Schema
@@ -261,7 +302,7 @@ gltf_model_meta.main(argv) ← 有 CLI 解析
 - tools/cpp_json_codegen.render_cpp() / render_to_json() / render_from_json()
 
 ---
-
+## CLI 接口
 只有 `gltf_model_meta.py` 解析 CLI 参数（通过 `model_meta_configs.py` 中的 `build_argparser()`），共 23 个标志：
 
 | CLI 标志 | 类型 | 对应步骤 | 默认值 |

@@ -19,7 +19,8 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from model_meta_configs import DEFAULT_CONFIG, ModelMetaConfig, parse_and_apply  # noqa: E402
+from model_meta_configs import DEFAULT_CONFIG, ModelMetaConfig
+from cli import parse_and_apply  # noqa: E402
 
 import gltf_meta_generator  # noqa: E402
 import tools.cpp_json_codegen as cpp_json_codegen  # noqa: E402
