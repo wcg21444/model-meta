@@ -52,12 +52,12 @@ def main(argv: list[str] | None = None) -> int:
     config = parse_and_apply(DEFAULT_CONFIG, argv)
 
     for name, step in STEPS:
-        print(f"\n▶ {name}", flush=True)
+        print(f"\n> {name}", flush=True)
         rc = step(config)
         if rc != 0:
-            print(f"✗ {name} failed (exit {rc})", file=sys.stderr)
+            print(f"x {name} failed (exit {rc})", file=sys.stderr)
             return rc
-        print(f"✓ {name} OK", flush=True)
+        print(f"+ {name} OK", flush=True)
 
     print("\nAll steps completed successfully.")
     return 0
