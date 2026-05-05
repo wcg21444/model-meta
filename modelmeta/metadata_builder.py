@@ -308,52 +308,60 @@ def _collect_skeleton(document: ModelDocument, mesh_index_to_part_name: dict[int
         for child in (node.children or []):
             node_children[i].append(child)
 
-    # Helper: collect all mesh indices in a node's subtree (including itself)
+    # All joint node indices across all skins (for boundary detection)
+    all_joint_indices: set[int] = set()
+    for skin in skins:
+        for j in (skin.joints or []):
+            all_joint_indices.add(j)
+
+    # Collect mesh indices in a node's subtree, stopping at child joints
     def collect_subtree_meshes(node_idx: int, visited: set[int]) -> list[int]:
-        if node_idx in visited or node_idx >= len(nodes):
-            return []
-        visited.add(node_idx)
         result: list[int] = []
-        node = nodes[node_idx]
-        if node.mesh is not None:
-            result.append(node.mesh)
         for child in node_children[node_idx]:
+            if child in visited or child >= len(nodes):
+                continue
+            visited.add(child)
+            child_node = nodes[child]
+            # Stop recursing at child joints — their meshes belong to them
+            if child in all_joint_indices:
+                continue
+            if child_node.mesh is not None:
+                result.append(child_node.mesh)
             result.extend(collect_subtree_meshes(child, visited))
         return result
 
-    # Determine meshes directly associated with each skin (nodes with skin + mesh)
-    skin_direct_meshes: dict[int, list[int]] = {}
-    for skin_idx, skin in enumerate(skins):
-        associated: set[int] = set()
-        for node_idx, node in enumerate(nodes):
-            if node.skin == skin_idx and node.mesh is not None:
-                associated.add(node.mesh)
-        skin_direct_meshes[skin_idx] = sorted(associated)
+    def map_to_part_names(mesh_indices: list[int]) -> list[str]:
+        parts = [mesh_index_to_part_name[m] for m in mesh_indices if m in mesh_index_to_part_name]
+        return list(dict.fromkeys(parts))
 
-    # Build skeleton output
     result: list[dict[str, Any]] = []
     seen: set[int] = set()
 
-    for skin_idx, skin in enumerate(skins):
-        direct_meshes = skin_direct_meshes.get(skin_idx, [])
-
+    for skin in skins:
         for joint_idx in (skin.joints or []):
             if joint_idx in seen or joint_idx >= len(nodes):
                 continue
             seen.add(joint_idx)
-            node = nodes[joint_idx]
+            joint_node = nodes[joint_idx]
 
-            # Use direct skin-mesh association if available; otherwise fall back to joint subtree
-            if direct_meshes:
-                mesh_indices = direct_meshes
-            else:
-                mesh_indices = collect_subtree_meshes(joint_idx, set())
+            mesh_indices: list[int] = []
 
-            part_names = [mesh_index_to_part_name[m] for m in mesh_indices if m in mesh_index_to_part_name]
-            part_names = list(dict.fromkeys(part_names))
+            # 1. Direct mesh association from glTF: joint node itself carries a mesh
+            if joint_node.mesh is not None:
+                mesh_indices.append(joint_node.mesh)
+
+            # 2. Subtree fallback: collect meshes from non-joint descendants only
+            subtree = collect_subtree_meshes(joint_idx, {joint_idx})
+            mesh_indices.extend(subtree)
+
+            mesh_indices = list(dict.fromkeys(mesh_indices))
+
+            part_names = map_to_part_names(mesh_indices)
+            if not part_names:
+                continue
 
             result.append({
-                "node_name": node.name or f"joint_{joint_idx}",
+                "node_name": joint_node.name or f"joint_{joint_idx}",
                 "model_part": part_names,
             })
 
