@@ -101,6 +101,8 @@ def apply_cli_args(config: ModelMetaConfig, args: argparse.Namespace) -> ModelMe
 
 def _extract_configs_path(argv: list[str] | None) -> Path | None:
     """Extract --configs value from raw argv before full arg parsing."""
+    if argv is None:
+        argv = sys.argv[1:]
     if not argv:
         return None
     for i, arg in enumerate(argv):
@@ -114,7 +116,7 @@ def _extract_configs_path(argv: list[str] | None) -> Path | None:
 def load_external_config(path: Path) -> ModelMetaConfig:
     """Dynamically load a :class:`ModelMetaConfig` from an external Python module.
 
-    The module must export a ``CONFIG`` attribute, which can be:
+    The module must export a ``CONFIG`` or ``DEFAULT_CONFIG`` attribute, which can be:
 
     - A :class:`ModelMetaConfig` instance (used directly)
     - A ``dict`` of keyword overrides (applied on top of ``DEFAULT_CONFIG``)
@@ -130,10 +132,10 @@ def load_external_config(path: Path) -> ModelMetaConfig:
     sys.modules["_external_model_meta_config"] = module
     spec.loader.exec_module(module)
 
-    external: Any = getattr(module, "CONFIG", None)
+    external: Any = getattr(module, "CONFIG", None) or getattr(module, "DEFAULT_CONFIG", None)
     if external is None:
         raise ValueError(
-            f"Config file {resolved} must export CONFIG "
+            f"Config file {resolved} must export CONFIG or DEFAULT_CONFIG "
             f"(a ModelMetaConfig instance or a dict of overrides)"
         )
 
@@ -141,7 +143,14 @@ def load_external_config(path: Path) -> ModelMetaConfig:
         return external
     if isinstance(external, dict):
         return replace(DEFAULT_CONFIG, **external)
-    raise TypeError(f"CONFIG must be ModelMetaConfig or dict, got {type(external).__name__}")
+    # Handle dataclass instances from a different module (same class name, different identity)
+    try:
+        from dataclasses import asdict
+        return replace(DEFAULT_CONFIG, **asdict(external))
+    except (TypeError, AttributeError):
+        raise TypeError(
+            f"CONFIG must be a ModelMetaConfig, dict, or dataclass, got {type(external).__name__}"
+        ) from None
 
 
 def parse_and_apply(

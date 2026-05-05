@@ -13,13 +13,14 @@ override the corresponding config values.
 from __future__ import annotations
 
 import sys
+from dataclasses import fields
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from model_meta_configs import DEFAULT_CONFIG, ModelMetaConfig
+from model_meta_configs import ModelMetaConfig
 from cli import parse_and_apply  # noqa: E402
 
 import gltf_meta_generator  # noqa: E402
@@ -49,8 +50,19 @@ STEPS = [
 ]
 
 
+def _dump_config(config: ModelMetaConfig) -> None:
+    """Print all config values at startup for transparency."""
+    lines: list[str] = ["", "--- Active Configuration ---"]
+    for field in fields(ModelMetaConfig):
+        value = getattr(config, field.name)
+        lines.append(f"  {field.name} = {value!r}")
+    lines.append("----------------------------")
+    print("\n".join(lines), flush=True)
+
+
 def main(argv: list[str] | None = None) -> int:
-    config = parse_and_apply(DEFAULT_CONFIG, argv)
+    config = parse_and_apply(None, argv)
+    _dump_config(config)
 
     for name, step in STEPS:
         print(f"\n> {name}", flush=True)
