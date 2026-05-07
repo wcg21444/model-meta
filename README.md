@@ -77,7 +77,10 @@ CONFIG = ModelMetaConfig(
 | `glob_patterns`      | 输入文件匹配模式列表，默认 `["assets/**/*"]`。接受多个 glob 或具体文件路径                     |
 | `output_path`        | 输出路径。`None`（默认）时在模型文件同级目录就地生成 `.modelmeta.json`；指定路径时输出到该路径 |
 | `unpack_textures`    | 是否提取内嵌纹理，默认 `True`                                                                  |
-| `texture_output_dir` | 纹理解包输出目录，默认 `"textures"`（相对于 `.modelmeta.json` 输出文件的父目录）               |
+| `texture_unpack_policy` | 解包策略：`"retain"`（默认，跳过已有）= `"cover"`（覆盖）                                   |
+| `texture_output_dir` | 纹理解包输出子目录名，默认 `"textures"`                                                        |
+| `texture_output_base`| 纹理解包基础目录。`None`（默认）= 相对于 `.modelmeta.json`；`Path` = 指定绝对路径              |
+| `asset_root`         | 资产根目录。设置后，在 `asset_root` 内的纹理路径以资产相对路径（无前缀）输出；否则用 `file:` 前缀 |
 | `schema_path`        | JSON Schema 路径，默认 `schema/modelmeta.schema.json`                                          |
 | `float_precision`    | 浮点数截断位数，`None` 表示不截断，默认 `6`                                                    |
 | `namespace`          | C++ 命名空间，默认 `None`                                                                      |
@@ -101,6 +104,10 @@ CONFIG = ModelMetaConfig(
 | `--glob-patterns` | 输入 glob 模式（可多个） |
 | `--output-path` | 输出路径 |
 | `--unpack-textures` / `--no-unpack-textures` | 纹理提取开关 |
+| `--texture-unpack-policy` | 解包策略：`retain`（跳过已有）/ `cover`（覆盖） |
+| `--texture-output-dir` | 纹理解包子目录 |
+| `--texture-output-base` | 纹理解包基础目录（`None`=相对文件） |
+| `--asset-root` | 资产根目录（用于路径规范化） |
 | `--float-precision` | 浮点数精度 |
 | `--namespace` | C++ 命名空间 |
 | `--cpp-header-output` | C++ 头文件输出路径 |
@@ -128,6 +135,7 @@ python gltf_model_meta.py --glob-patterns "assets/**/*.glb" \
 
 ```json
 {
+  "version": "0.1.0",
   "model_type": "Skeletal",
   "bounding_box": {
     "min": [-1.0, -0.5, -1.0],
@@ -141,7 +149,7 @@ python gltf_model_meta.py --glob-patterns "assets/**/*.glb" \
         "mat_name": "BodyMat",
         "is_pbr": true,
         "textures": {
-          "base_color": "textures/model_baseColor.png"
+          "base_color": "file:textures/model_baseColor.png"
         },
         "alpha_mode": "Opaque",
         "roughness": 0.8,
@@ -155,19 +163,20 @@ python gltf_model_meta.py --glob-patterns "assets/**/*.glb" \
       "model_part": ["Body"]
     }
   ],
-  "textures": ["textures/model_baseColor.png"],
+  "textures": ["file:textures/model_baseColor.png"],
   "material": ["BodyMat"]
 }
 ```
 
 | 字段           | 说明                                                   |
 | -------------- | ------------------------------------------------------ |
+| `version`      | 元数据格式版本号（`MAJOR.MINOR.PATCH`），与 Schema / C++ CodeGen 挂钩 |
 | `model_type`   | `"Skeletal"`（含骨架）或 `"Static"`                    |
 | `bounding_box` | 整体包围盒，`{ min: float3, max: float3 }`             |
 | `model_part`   | 模型部件数组，含名称、局部包围盒、材质                 |
 | `material`     | PBR 材质信息：名称、纹理槽、透明度模式、粗糙度、金属度 |
 | `skeleton`     | 骨架节点层级（仅 Skeletal 模型输出）                   |
-| `textures`     | 所有材质引用的纹理路径汇总（去重）                     |
+| `textures`     | 所有材质引用的纹理路径汇总（`file:` 相对路径，去重） |
 | `material`     | 所有材质名称汇总（去重）                               |
 
 ---

@@ -23,7 +23,11 @@ def generate_for_file(model_path: Path, is_glob: bool, config: ModelMetaConfig) 
     document = load_model(model_path)
     texture_overrides: dict[int, str] = {}
     if config.unpack_textures:
-        texture_overrides = unpack_embedded_textures(document, output_path, config.texture_output_dir)
+        texture_overrides = unpack_embedded_textures(
+            document, output_path, config.texture_output_dir,
+            config.texture_output_base, config.asset_root,
+            config.texture_unpack_policy,
+        )
 
     metadata = build_metadata(document, config.float_precision, texture_overrides)
     mapped_metadata = apply_json_field_mapping(metadata)

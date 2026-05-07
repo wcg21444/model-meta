@@ -3,9 +3,14 @@
   "$id": "https://directcraft.local/schema/modelmeta.schema.json",
   "title": "ModelMeta",
   "type": "object",
-  "required": ["model_type", "bounding_box", "model_part", "textures", "material"],
+  "required": ["version", "model_type", "bounding_box", "model_part", "textures", "materials"],
   "additionalProperties": false,
   "properties": {
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "The version of the model metadata"
+    },
     "model_type": {
       "type": "string",
       "enum": ["Skeletal", "Static"]
@@ -31,7 +36,7 @@
         "type": "string"
       }
     },
-    "material": {
+    "materials": {
       "type": "array",
       "items": {
         "type": "string"
@@ -106,7 +111,7 @@
     },
     "ModelPart": {
       "type": "object",
-      "required": ["model_name", "bounding_box", "material"],
+      "required": ["model_name", "bounding_box", "material","mesh_index"],
       "additionalProperties": false,
       "properties": {
         "model_name": {
@@ -117,6 +122,9 @@
         },
         "material": {
           "$ref": "#/$defs/Material"
+        },
+        "mesh_index":{
+          "type": "integer" 
         }
       }
     },
@@ -128,7 +136,7 @@
         "node_name": {
           "type": "string"
         },
-        "model_part": {
+        "model_part": { 
           "type": "array",
           "items": {
             "type": "string"

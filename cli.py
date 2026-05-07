@@ -46,7 +46,14 @@ def build_argparser() -> argparse.ArgumentParser:
         "--no-unpack-textures", dest="unpack_textures",
         action="store_false",
     )
+    parser.add_argument(
+        "--texture-unpack-policy", type=str, default=None,
+        choices=["retain", "cover"],
+        help="Unpack policy: 'retain' skips existing texture files; 'cover' overwrites them.",
+    )
     parser.add_argument("--texture-output-dir", type=str, default=None)
+    parser.add_argument("--texture-output-base", type=_path_type, default=None)
+    parser.add_argument("--asset-root", type=_path_type, default=None)
     parser.add_argument("--glob-patterns", type=str, nargs="+", default=None)
     parser.add_argument("--output-path", type=_path_type, default=None)
     parser.add_argument("--schema-path", type=_path_type, default=None)

@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 
 from .gltf_reader import ModelDocument
+from . import __version__
 
 
 EMPTY_BOUNDS = {"min": [0.0, 0.0, 0.0], "max": [0.0, 0.0, 0.0]}
@@ -35,11 +36,12 @@ def build_metadata(
     has_skeleton = _has_skeleton(document)
 
     metadata: dict[str, Any] = {
+        "version": __version__,
         "model_type": "Skeletal" if has_skeleton else "Static",
         "bounding_box": _bounds_to_json(_scene_bounds(document.scene), float_precision),
         "model_part": model_parts,
         "textures": textures,
-        "material": materials,
+        "materials": materials,
     }
     if has_skeleton:
         metadata["skeleton"] = _collect_skeleton(document, mesh_index_to_part_name)
@@ -56,20 +58,16 @@ def _collect_model_parts(
     scene = document.scene
     geometry = getattr(scene, "geometry", {}) or {}
 
-    mesh_names = _resolve_mesh_names(document)
+    model_names = _resolve_model_names(document)
     geom_to_mesh = _map_geometry_to_mesh_index(document)
     mesh_index_to_part_name: dict[int, str] = {}
 
     for geom_key, mesh in geometry.items():
         mesh_index = geom_to_mesh.get(geom_key)
         if mesh_index is not None:
-            name = mesh_names.get(mesh_index, str(geom_key))
+            name = model_names.get(mesh_index, str(geom_key))
         else:
             name = str(geom_key)
-
-        # Sanitize auto-generated trimesh names like GLTF / GLTF_1
-        if _is_trimesh_generated_name(name):
-            name = f"mesh_{mesh_index}" if mesh_index is not None else str(geom_key)
 
         material = _material_from_mesh(mesh, material_by_name) or default_material
         parts.append(
@@ -77,6 +75,7 @@ def _collect_model_parts(
                 "model_name": name,
                 "bounding_box": _bounds_to_json(getattr(mesh, "bounds", None), float_precision),
                 "material": material,
+                "mesh_index": mesh_index,
             }
         )
 
@@ -85,16 +84,12 @@ def _collect_model_parts(
 
     if not parts:
         stem_name = document.path.stem
-        parts.append({"model_name": stem_name, "bounding_box": EMPTY_BOUNDS, "material": default_material})
+        parts.append({"model_name": stem_name, "bounding_box": EMPTY_BOUNDS, "material": default_material, "mesh_index": None})
 
     return parts, mesh_index_to_part_name
 
 
-def _is_trimesh_generated_name(name: str) -> bool:
-    return name == "GLTF" or (name.startswith("GLTF_") and name[5:].isdigit())
-
-
-def _resolve_mesh_names(document: ModelDocument) -> dict[int, str]:
+def _resolve_model_names(document: ModelDocument) -> dict[int, str]:
     """Map GLTF mesh index to a human-readable name."""
     gltf = document.gltf
     if gltf is None:
@@ -105,22 +100,25 @@ def _resolve_mesh_names(document: ModelDocument) -> dict[int, str]:
 
     names: dict[int, str] = {}
 
-    # First pass: use mesh name if available
-    for i, mesh in enumerate(meshes):
-        if mesh.name:
-            names[i] = mesh.name
+    # # First pass: use mesh name if available
+    # for i, mesh in enumerate(meshes):
+    #     if mesh.name:
+    #         names[i] = mesh.name
 
-    # Second pass: for unnamed meshes, use referring node name
+    # model part always use node name
     for node in nodes:
-        if node.mesh is not None and node.mesh not in names:
-            node_name = node.name
-            if node_name:
-                names[node.mesh] = node_name
+        node_name = node.name
+        if node_name:
+            names[node.mesh] = node_name
 
-    # Third pass: fallback to mesh_{index}
+    # # Third pass: fallback to mesh_{index}
+    # for i in range(len(meshes)):
+    #     if i not in names:
+    #         names[i] = f"mesh_{i}"
+
     for i in range(len(meshes)):
         if i not in names:
-            names[i] = f"mesh_{i}"
+            raise ValueError(f"Unable to resolve a name for mesh index {i}. Consider adding names to your GLTF nodes ")
 
     return names
 
@@ -241,6 +239,19 @@ def _collect_gltf_materials(document: ModelDocument, texture_overrides: dict[int
     return materials
 
 
+def _format_texture_url(path: str) -> str:
+    """Format a texture path with file-relative context (url-doc.md v1.1).
+
+    The ``texture://`` root is omitted because the ``textures`` field
+    already implies the resource type.  Only the context + path are stored.
+
+    Data URIs are passed through unchanged.
+    """
+    if path.startswith("data:"):
+        return path
+    return f"file:{path}"
+
+
 def _add_texture(
     textures: dict[str, str],
     slot: str,
@@ -253,11 +264,11 @@ def _add_texture(
     if texture_index is None:
         return
     if texture_index in texture_overrides:
-        textures[slot] = texture_overrides[texture_index]
+        textures[slot] = texture_overrides[texture_index]  # pre-formatted by unpacker
         return
     path = _texture_uri(gltf, texture_index)
     if path:
-        textures[slot] = _normalize_texture_path(path, model_path)
+        textures[slot] = _format_texture_url(_normalize_texture_path(path, model_path))
 
 
 def _texture_uri(gltf: Any, texture_index: int) -> str | None:

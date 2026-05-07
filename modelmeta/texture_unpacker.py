@@ -9,8 +9,17 @@ from typing import Any
 
 from .gltf_reader import ModelDocument
 
-
-def unpack_embedded_textures(document: ModelDocument, metadata_output_path: Path, texture_output_dir: str) -> dict[int, str]:
+# 输出格式取决于 asset_root:
+#   在 asset_root 内 → "textures/image.png" (asset-relative, 无前缀)
+#   不在 asset_root 内 → "file:textures/image.png" (file-relative)
+def unpack_embedded_textures(
+    document: ModelDocument,
+    metadata_output_path: Path,
+    texture_output_dir: str,
+    texture_output_base: Path | None = None,
+    asset_root: Path | None = None,
+    unpack_policy: str = "retain",
+) -> dict[int, str]:
     gltf = document.gltf
     if gltf is None:
         return {}
@@ -19,9 +28,13 @@ def unpack_embedded_textures(document: ModelDocument, metadata_output_path: Path
     if not images:
         return {}
 
+    # Resolve target directory
     target_dir = Path(texture_output_dir)
     if not target_dir.is_absolute():
-        target_dir = metadata_output_path.parent / target_dir
+        if texture_output_base is not None:
+            target_dir = texture_output_base.resolve() / target_dir
+        else:
+            target_dir = metadata_output_path.parent / target_dir
     target_dir.mkdir(parents=True, exist_ok=True)
 
     image_paths: dict[int, str] = {}
@@ -30,9 +43,9 @@ def unpack_embedded_textures(document: ModelDocument, metadata_output_path: Path
         if data is None:
             continue
         safe_name = _safe_stem(image.name or f"texture_{image_index}")
-        file_path = _unique_path(target_dir / f"{document.path.stem}_{safe_name}{ext}")
+        file_path = _resolve_texture_path(target_dir, document, safe_name, ext, unpack_policy)
         file_path.write_bytes(data)
-        image_paths[image_index] = _relative_path(file_path, metadata_output_path.parent)
+        image_paths[image_index] = _texture_ref_path(file_path, metadata_output_path, asset_root)
 
     texture_paths: dict[int, str] = {}
     for texture_index, texture in enumerate(textures):
@@ -40,6 +53,29 @@ def unpack_embedded_textures(document: ModelDocument, metadata_output_path: Path
         if image_index in image_paths:
             texture_paths[texture_index] = image_paths[image_index]
     return texture_paths
+
+
+def _texture_ref_path(
+    abs_texture: Path,
+    metadata_output_path: Path,
+    asset_root: Path | None,
+) -> str:
+    """Return the reference string for a texture in metadata.
+
+    - Under ``asset_root`` → path relative to asset root (bare, no prefix)
+    - Otherwise → ``file:<relative-to-.modelmeta.json>``
+    """
+    import os
+
+    abs_texture = abs_texture.resolve()
+    if asset_root is not None:
+        resolved_root = asset_root.resolve()
+        try:
+            return abs_texture.relative_to(resolved_root).as_posix()
+        except ValueError:
+            pass  # not under asset_root
+    rel = os.path.relpath(str(abs_texture), str(metadata_output_path.parent.resolve()))
+    return f"file:{rel.replace(os.sep, '/')}"
 
 
 def _image_bytes(document: ModelDocument, image: Any) -> tuple[bytes | None, str]:
@@ -83,14 +119,22 @@ def _read_buffer_view(document: ModelDocument, buffer_view_index: int) -> bytes 
     return bytes(blob[start:end])
 
 
-def _relative_path(path: Path, base: Path) -> str:
-    try:
-        return path.relative_to(base).as_posix()
-    except ValueError:
-        return path.as_posix()
+def _resolve_texture_path(
+    target_dir: Path,
+    document: ModelDocument,
+    safe_name: str,
+    ext: str,
+    policy: str,
+) -> Path:
+    """Resolve the output path for an unpacked texture.
 
-
-def _unique_path(path: Path) -> Path:
+    - ``"retain"``: skip existing files by appending a suffix (``_1``, ``_2``, ...)
+    - ``"cover"``: overwrite the file at the expected path
+    """
+    path = target_dir / f"{document.path.stem}_{safe_name}{ext}"
+    if policy == "cover":
+        return path
+    # retain: find a non-existing path
     if not path.exists():
         return path
     for index in range(1, 10_000):

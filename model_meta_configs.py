@@ -25,9 +25,16 @@ class ModelMetaConfig:
     # =========================================================================
     float_precision: Optional[int] = 6
     unpack_textures: bool = True
-    texture_output_dir: str = "textures"
+    texture_unpack_policy: str = "retain"          # "retain" = skip existing, create new; "cover" = overwrite
+    texture_output_dir: str = ""
+    texture_output_base: Optional[Path] = Path(
+        "D:\\Codes\\vscode\\python\\directcraft_utils\\model-meta\\assets\\models\\textures"
+    )  # None = relative to .modelmeta.json; Path = absolute dir
+    asset_root: Optional[Path] = Path(
+        "D:\\Codes\\vscode\\python\\directcraft_utils\\model-meta\\assets\\"
+    )  # for normalizing output paths to asset-relative
     glob_patterns: List[str] = field(default_factory=lambda: ["assets/**/*"])
-    output_path: Optional[Path] = None
+    output_path: Optional[Path] = None  # None = next to .gltf/.glb; Path = explicit output path for .modelmeta.json
     schema_path: Path = Path("schema/modelmeta.schema.json")
 
     # =========================================================================
